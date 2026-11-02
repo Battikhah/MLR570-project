@@ -1,0 +1,12 @@
+dataset: cifar10
+num_classes: 10
+seed: 0
+split_seed: 0
+corruption_rate: 0.3
+batch_size: 128
+epochs: 20
+teacher: resnet32
+student: resnet8
+tau: 0.1
+temperature: 4.0
+learning_rate: 0.1
