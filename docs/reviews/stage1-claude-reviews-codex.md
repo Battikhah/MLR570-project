@@ -49,7 +49,7 @@ Both hits are false positives:
   - The second alternative, `(^|/)(?:cifar|checkpoint|ckpt|weights?)[^/]*(?:$|[._-])`, flags `src/pcdkd/data/cifar.py`. It also flags `foo/weight_decay.md` (tested: `True`).
   - At the same time it misses real artefacts: `outputs/ckpt/x` → `False`, `model_weights.npz` → `False`.
 - **`SECRETS` matches the literal test key in `tests/unit/test_hygiene.py:5`.**
-  - `SECRETS.search(...)` gives `match='AKIA1234567890123456'`.
+  - `SECRETS.search(...)` gives `match='AKIA<16 digits, redacted>'`.
 
 **Minimal fix:**
 
