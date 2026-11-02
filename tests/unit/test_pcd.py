@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import torch
 
-from pcdkd.optim.combiners import PCD
+from pcdkd.optim.combiners import PCD, AdaptiveLambda
 from pcdkd.optim.pcd import pcd_k2_closed_form, pcd_kkt_enumeration, solve_pcd_qp
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "pcd_reference_qp.json"
@@ -182,3 +182,76 @@ def test_rescale_false_returns_normalized_direction():
     db, _ = b.combine({"ce": g1, "kd": g2})
     cos = float(da @ db) / float(da.norm() * db.norm())
     assert cos == pytest.approx(1.0, abs=1e-6)
+
+
+# ---- Codex review F1: actual vs unit-norm Prop. 4.7 margin ----
+
+A = (0.1, 0.0)
+B = (-0.8, 0.6)
+TAU = 0.1
+# Independent derivation: a.b = -0.08, ||b||^2 = 1 -> alpha = 0.1 + 0.08 = 0.18,
+# d = a + 0.18 b = (-0.044, 0.108), a.d / ||a||^2 = -0.0044 / 0.01 = -0.44;
+# unit formula with c = cos(a, b) = -0.8: 1 + 0.1(-0.8) - 0.64 = 0.28.
+ACTUAL, UNIT = -0.44, 0.28
+
+
+def test_primary_margin_counterexample_solver():
+    a, b = (torch.tensor(v, dtype=torch.float64) for v in (A, B))
+    d, info = solve_pcd_qp([a, b], TAU)
+    assert info["mu"][0] == pytest.approx(0.18, abs=1e-15)
+    assert torch.allclose(d, torch.tensor([-0.044, 0.108], dtype=torch.float64), atol=1e-15)
+    assert info["primary_margin"] == pytest.approx(ACTUAL, abs=1e-12)
+    assert float(a @ d) / float(a @ a) == pytest.approx(ACTUAL, abs=1e-12)
+
+
+def _pcd_with_unit_scales(cls, **kw):
+    """Combiner whose EMA scales are exactly 1 at the next step for raw g1 = A, g2 = B.
+
+    beta = 0.5, t_prev = 60 (bias correction 1 - 0.5**61 == 1.0 in float64), eps = 0:
+    v_ce = 0.5 * 1.99 + 0.5 * 0.01 = 1, v_kd = 0.5 * 1 + 0.5 * 1 = 1 -> s = 1, so g~ = raw.
+    """
+    comb = cls(TAU, beta=0.5, eps=0.0, **kw)
+    comb.normalizer.load_state_dict(
+        {"beta": 0.5, "eps": 0.0, "v": {"ce": 1.99, "kd": 1.0}, "t": {"ce": 60, "kd": 60}}
+    )
+    return comb
+
+
+@pytest.mark.parametrize("cls", [PCD, AdaptiveLambda])
+def test_prop47_actual_margin_counterexample_combiner(cls):
+    comb = _pcd_with_unit_scales(cls, rescale=False)
+    g1, g2 = (torch.tensor(v, dtype=torch.float64) for v in (A, B))
+    d, info = comb.combine({"ce": g1, "kd": g2})
+    assert info["scale_primary"] == pytest.approx(1.0, abs=1e-15)
+    assert info["scale_secondary"] == pytest.approx(1.0, abs=1e-15)
+    assert info["active"]
+    assert info["prop47_margin_actual"] == pytest.approx(ACTUAL, abs=1e-9)
+    assert info["prop47_margin"] == info["prop47_margin_actual"]
+    assert info["prop47_margin_unit"] == pytest.approx(UNIT, abs=1e-9)
+    # the logged actual margin is the real one for the returned direction
+    assert float(g1 @ d) / float(g1 @ g1) == pytest.approx(ACTUAL, abs=1e-9)
+    assert info["align_primary"] < 0  # the step really ascends the primary
+
+
+@pytest.mark.parametrize("cls", [PCD, AdaptiveLambda])
+def test_margins_none_on_primary_stationary_halt(cls):
+    comb = cls(TAU)
+    _, info = comb.combine({"ce": torch.zeros(2), "kd": torch.tensor([1.0, 0.0])})
+    assert info["prop47_margin_actual"] is None
+    assert info["prop47_margin"] is None
+    assert info["prop47_margin_unit"] is None
+
+
+def test_actual_equals_unit_formula_for_unit_vectors():
+    """Prop. 4.7 holds for the actual margin exactly when ||g~1|| = ||g~2|| = 1."""
+    rng = np.random.default_rng(470)
+    for _ in range(200):
+        V = rng.standard_normal((2, 6))
+        V /= np.linalg.norm(V, axis=1, keepdims=True)
+        tau = float(rng.uniform(0, 1))
+        c = float(V[0] @ V[1])
+        _, info = solve_pcd_qp(_vecs(V), tau)
+        if info["active"]:
+            assert info["primary_margin"] == pytest.approx(1 + tau * c - c * c, abs=1e-12)
+        else:
+            assert info["primary_margin"] == pytest.approx(1.0, abs=1e-12)

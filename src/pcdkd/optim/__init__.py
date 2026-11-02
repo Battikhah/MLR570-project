@@ -11,7 +11,12 @@ from pcdkd.optim.combiners import (
 )
 from pcdkd.optim.grads import flat_grad, unflatten_to
 from pcdkd.optim.normalize import EMANormalizer
-from pcdkd.optim.pcd import pcd_k2_closed_form, pcd_kkt_enumeration, solve_pcd_qp
+from pcdkd.optim.pcd import (
+    pcd_k2_closed_form,
+    pcd_kkt_enumeration,
+    primary_margin,
+    solve_pcd_qp,
+)
 
 __all__ = [
     "COMBINERS",
@@ -25,6 +30,7 @@ __all__ = [
     "flat_grad",
     "pcd_k2_closed_form",
     "pcd_kkt_enumeration",
+    "primary_margin",
     "solve_pcd_qp",
     "unflatten_to",
 ]

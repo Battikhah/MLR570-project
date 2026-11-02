@@ -1,9 +1,11 @@
 """Running aggregation of combiner ``info`` dicts into JSON-serialisable summaries.
 
-Numeric keys get count/mean/std/min/max (Welford, float64); bool keys get the fraction of True;
-``cos_raw`` and ``cos_norm`` also get fixed-edge histograms on [-1, 1] (values outside are
-counted in ``below``/``above``); ``prop47_margin`` also gets the fraction of steps with a
-non-positive margin. ``None`` values (not applicable for that method) are skipped and
+Numeric keys get count/mean/std/min/max (Welford, float64); bool keys get the fraction of True.
+``cos_raw`` and ``dot_norm`` also get fixed-edge histograms on [-1, 1] (values outside are
+counted in ``below``/``above``; ``dot_norm`` is an inner product and may fall outside).
+``prop47_nonpositive_fraction`` is computed from the ACTUAL margin ``prop47_margin_actual``
+(g~1^T d~ / ||g~1||^2), not from the unit-norm idealization ``prop47_margin_unit``.
+``None`` values (not applicable for that method, or the primary-stationary halt) are skipped;
 non-finite values are counted per key but excluded from the statistics. Strings, lists and
 dicts are ignored.
 """
@@ -16,7 +18,8 @@ from collections.abc import Iterable
 
 import numpy as np
 
-HIST_KEYS = ("cos_raw", "cos_norm")
+HIST_KEYS = ("cos_raw", "dot_norm")
+MARGIN_KEY = "prop47_margin_actual"
 _SKIP = frozenset({"step"})
 
 
@@ -54,11 +57,17 @@ class _Stat:
 class DiagnosticsAggregator:
     """Accumulate per-step ``info`` dicts. ``summary()`` / ``to_json()`` give the aggregate."""
 
-    def __init__(self, n_bins: int = 20, hist_keys: Iterable[str] = HIST_KEYS):
+    def __init__(
+        self,
+        n_bins: int = 20,
+        hist_keys: Iterable[str] = HIST_KEYS,
+        margin_key: str = MARGIN_KEY,
+    ):
         if n_bins < 1:
             raise ValueError("n_bins must be >= 1")
         self.edges = np.linspace(-1.0, 1.0, n_bins + 1)
         self.hist_keys = tuple(hist_keys)
+        self.margin_key = margin_key
         self.reset()
 
     def reset(self) -> None:
@@ -85,7 +94,7 @@ class DiagnosticsAggregator:
                 self.numeric.setdefault(key, _Stat()).add(x)
                 if key in self.hists and math.isfinite(x):
                     self._hist_add(key, x)
-                if key == "prop47_margin" and math.isfinite(x):
+                if key == self.margin_key and math.isfinite(x):
                     self.margin_nonpos[0] += int(x <= 0.0)
                     self.margin_nonpos[1] += 1
 

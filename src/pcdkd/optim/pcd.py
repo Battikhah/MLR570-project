@@ -89,6 +89,19 @@ def _independent(GA: np.ndarray, tol: float) -> bool:
     return bool(np.linalg.eigvalsh(GA / np.outer(d, d))[0] > tol)
 
 
+def primary_margin(gram_normalized, weights: Sequence[float]) -> float | None:
+    """Actual primary margin g~1^T d~ / ||g~1||^2 for d~ = sum_i w_i g~_i (None if g~1 = 0).
+
+    Under ||g~1|| = ||g~2|| = 1 and an active K = 2 constraint this equals PCD Prop. 4.7's
+    1 + tau c - c^2; in general (EMA-normalized, non-unit vectors) it does not.
+    """
+    G = np.asarray(gram_normalized, dtype=np.float64)
+    w = np.asarray(weights, dtype=np.float64)
+    if G[0, 0] <= 0.0:
+        return None
+    return float(w @ G[0, : len(w)] / G[0, 0])
+
+
 def gram_matrix(vectors: Sequence[torch.Tensor]) -> np.ndarray:
     """K x K float64 Gram matrix of 1-D tensors (dots on device, assembled on CPU)."""
     K = len(vectors)
@@ -113,8 +126,8 @@ def solve_pcd_qp(
 
     Returns ``(d_tilde, info)`` with info keys: ``weights`` (list of K, weights[0] == 1),
     ``mu`` (K-1 multipliers), ``active`` (tuple of 1-based secondary indices whose constraint
-    binds), ``feasible``, ``gram`` (K x K nested list) and ``method``
-    ("trivial" | "closed_form" | "kkt").
+    binds), ``feasible``, ``gram`` (K x K nested list), ``primary_margin``
+    (g~1^T d~ / ||g~1||^2; None if g~1 = 0) and ``method`` ("trivial" | "closed_form" | "kkt").
     """
     vecs = list(G_normalized_list)
     K = len(vecs)
@@ -143,6 +156,7 @@ def solve_pcd_qp(
         "active": active,
         "feasible": bool(feasible),
         "gram": G.tolist(),
+        "primary_margin": primary_margin(G, w),
         "method": method,
     }
     return d, info

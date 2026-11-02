@@ -15,20 +15,28 @@ Notation: g1 = primary (CE) gradient, g2 = secondary (KD) gradient, g~i = s_i g_
   coefficient computed independently of the QP; must equal PCD for K = 2.
 
 Every combiner updates its own EMA normalizer on every call (also those whose direction ignores
-it), so ``cos_norm`` and the scales are logged identically for all arms.
+it), so ``dot_norm`` and the scales are logged identically for all arms.
 
 ``info`` keys (all JSON-serialisable; secondary-specific scalars refer to the first secondary):
 
-* method, step, primary, secondaries
-* cos_raw: cosine of raw g1, g2
-* cos_norm: g~1^T g~2, the c of PCD Prop. 4.7 (equals the cosine only in EMA steady state)
+* method, step, primary, secondaries; method names are "wkd", "nwkd", "pcgrad_onto_primary"
+  (the one-sided baseline -- not Yu et al.'s symmetric PCGrad), "pcd", "adaptive_lambda"
+* cos_raw: cosine of g1, g2 -- the true angle, identical for raw and EMA-normalized gradients
+  (positive scaling preserves angles)
+* dot_norm: inner product g~1^T g~2 of the EMA-normalized gradients (NOT a cosine; it equals
+  the cosine only when ||g~1|| = ||g~2|| = 1 and can lie outside [-1, 1])
 * active: the method's conditional branch fired (PCD constraint binding / PCGrad projection
   applied / AdaptiveLambda lam_t > 0); always False for the weighted sums
 * feasible: False only for an infeasible PCD QP (fallback to the primary)
 * lambda_eff: secondary/primary coefficient in the space the method combines (raw for
   WeightedSum and PCGrad, normalized otherwise); lambda_raw: the same ratio in raw space
-* prop47_margin: 1 + tau c - c^2 with c = cos_raw (PCD Prop. 4.7 under the unit-norm
-  idealization); None for methods without tau
+* prop47_margin_actual: g~1^T d~ / ||g~1||^2, the actual normalized primary-progress margin of
+  the solved direction (before the final rescale, which preserves its sign); PCD, AdaptiveLambda
+  and NWKD only; None on the primary-stationary halt (g1 = 0) and for raw-space methods
+* prop47_margin: alias of prop47_margin_actual (kept because it is a required key)
+* prop47_margin_unit: 1 + tau c - c^2 with c = cos_raw, PCD Prop. 4.7's formula, valid only under
+  the unit-norm idealization ||g~1|| = ||g~2|| = 1 (can differ in sign from the actual margin);
+  PCD and AdaptiveLambda only; None on the halt
 * norm_primary, norm_secondary, norm_direction, scale_primary, scale_secondary
 * align_primary = cos(g1, d), align_secondary = cos(g2, d), zero_primary, tau
 * PCD only: mu, active_set, cos_raw_all, norm_secondary_all
@@ -43,7 +51,7 @@ import numpy as np
 import torch
 
 from pcdkd.optim.normalize import EMANormalizer
-from pcdkd.optim.pcd import MAX_K, gram_matrix, solve_pcd_qp
+from pcdkd.optim.pcd import MAX_K, gram_matrix, primary_margin, solve_pcd_qp
 
 
 def _cos(dot: float, n1: float, n2: float) -> float:
@@ -102,12 +110,14 @@ class Combiner:
             "primary": names[0],
             "secondaries": names[1:],
             "cos_raw": _cos(G[0, 1], norms[0], norms[1]),
-            "cos_norm": float(scales[0] * scales[1] * G[0, 1]),
+            "dot_norm": float(scales[0] * scales[1] * G[0, 1]),
             "active": False,
             "feasible": True,
             "lambda_eff": None,
             "lambda_raw": None,
             "prop47_margin": None,
+            "prop47_margin_actual": None,
+            "prop47_margin_unit": None,
             "norm_primary": float(norms[0]),
             "norm_secondary": float(norms[1]),
             "norm_direction": d_norm,
@@ -151,6 +161,16 @@ class WeightedSum(Combiner):
         return d, {"lambda_eff": ratio, "lambda_raw": ratio}
 
 
+def _normalized_gram(G: np.ndarray, scales: Sequence[float]) -> np.ndarray:
+    s = np.asarray(scales, dtype=np.float64)
+    return G * np.outer(s, s)
+
+
+def _nw_margin(G: np.ndarray, scales: Sequence[float], lam: float) -> float | None:
+    """Actual primary margin g~1^T d~ / ||g~1||^2 of d~ = g~1 + lam g~2 (None if g1 = 0)."""
+    return primary_margin(_normalized_gram(G[:2, :2], scales[:2]), [1.0, lam])
+
+
 class NormalizedWeightedSum(Combiner):
     """EMA-normalized weighted sum d~ = g~1 + lam g~2, optionally rescaled to ||g1|| like PCD."""
 
@@ -172,9 +192,12 @@ class NormalizedWeightedSum(Combiner):
 
     def _direction(self, g, G, norms, scales):
         lam_raw = self.lam * scales[1] / scales[0] if scales[0] > 0 else None
+        margin = _nw_margin(G, scales, self.lam)
         return self._weighted(g, norms, scales, self.lam), {
             "lambda_eff": self.lam,
             "lambda_raw": lam_raw,
+            "prop47_margin": margin,
+            "prop47_margin_actual": margin,
         }
 
 
@@ -185,7 +208,7 @@ class PCGrad(Combiner):
     preserved.
     """
 
-    name = "pcgrad"
+    name = "pcgrad_onto_primary"  # NOT the symmetric PCGrad of Yu et al. (2020)
 
     def __init__(self, lam: float = 1.0, beta: float = 0.99, eps: float = 1e-8):
         super().__init__(beta, eps)
@@ -240,13 +263,19 @@ class PCD(Combiner):
         c = _cos(G[0, 1], norms[0], norms[1])
         extra = {
             "tau": self.tau,
-            "prop47_margin": 1.0 + tau1 * c - c * c,
+            "prop47_margin_unit": 1.0 + tau1 * c - c * c,
             "cos_raw_all": [_cos(G[0, j], norms[0], norms[j]) for j in range(1, K)],
             "norm_secondary_all": [float(norms[j]) for j in range(1, K)],
         }
-        if norms[0] == 0.0:  # Alg. 1 line 7: primary-stationary halt
+        if norms[0] == 0.0:  # Alg. 1 line 7: primary-stationary halt (no step, no margin)
             extra.update(
-                {"mu": [0.0] * (K - 1), "active_set": [], "lambda_eff": 0.0, "lambda_raw": 0.0}
+                {
+                    "mu": [0.0] * (K - 1),
+                    "active_set": [],
+                    "lambda_eff": 0.0,
+                    "lambda_raw": 0.0,
+                    "prop47_margin_unit": None,
+                }
             )
             return torch.zeros_like(g[0]), extra
         gn = [g[i] * scales[i] for i in range(K)]
@@ -258,6 +287,8 @@ class PCD(Combiner):
                 "active_set": list(qp["active"]),
                 "feasible": qp["feasible"],
                 "mu": mu,
+                "prop47_margin": qp["primary_margin"],
+                "prop47_margin_actual": qp["primary_margin"],
                 "lambda_eff": mu[0],
                 "lambda_raw": mu[0] * scales[1] / scales[0] if scales[0] > 0 else None,
             }
@@ -283,22 +314,30 @@ class AdaptiveLambda(NormalizedWeightedSum):
         inner = scales[0] * scales[1] * float(G[0, 1])  # g~1^T g~2
         lam = max(0.0, self.tau - inner / n2) if n2 > 0 else 0.0
         c = _cos(G[0, 1], norms[0], norms[1])
+        if norms[0] == 0.0:  # same primary-stationary halt as PCD: no step, nothing active
+            return torch.zeros_like(g[0]), {
+                "tau": self.tau,
+                "active": False,
+                "lambda_eff": 0.0,
+                "lambda_raw": 0.0,
+            }
+        margin = _nw_margin(G, scales, lam)
         extra = {
             "tau": self.tau,
             "active": lam > 0.0,
             "lambda_eff": lam,
             "lambda_raw": lam * scales[1] / scales[0] if scales[0] > 0 else None,
-            "prop47_margin": 1.0 + self.tau * c - c * c,
+            "prop47_margin": margin,
+            "prop47_margin_actual": margin,
+            "prop47_margin_unit": 1.0 + self.tau * c - c * c,
         }
-        if norms[0] == 0.0:  # same halt rule as PCD
-            return torch.zeros_like(g[0]), extra
         return self._weighted(g, norms, scales, lam), extra
 
 
 COMBINERS = {
     "wkd": WeightedSum,
     "nwkd": NormalizedWeightedSum,
-    "pcgrad": PCGrad,
+    "pcgrad_onto_primary": PCGrad,
     "pcd": PCD,
     "adaptive_lambda": AdaptiveLambda,
 }

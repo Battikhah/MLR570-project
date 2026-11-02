@@ -15,7 +15,7 @@ from pcdkd.optim.grads import flat_grad, unflatten_to
 
 REQUIRED_KEYS = {
     "cos_raw",
-    "cos_norm",
+    "dot_norm",
     "active",
     "feasible",
     "lambda_eff",
@@ -111,6 +111,15 @@ def test_adaptive_lambda_equals_pcd(tau, rescale, dtype, lam_tol):
         assert i1["lambda_eff"] == pytest.approx(i2["lambda_eff"], rel=lam_tol, abs=lam_tol)
         seen.add(i1["active"])
     assert seen == {True, False}  # both regimes exercised
+    # boundary: primary-stationary halt (PCD Alg. 1 lines 7-8) -- identical diagnostics too
+    z = torch.zeros(3, dtype=dtype)
+    g2 = torch.tensor([1.0, 0.0, 0.0], dtype=dtype)
+    d1, i1 = pcd.combine({"ce": z, "kd": g2})
+    d2, i2 = ada.combine({"ce": z, "kd": g2})
+    assert torch.all(d1 == 0) and torch.all(d2 == 0)
+    for key in ("active", "lambda_eff", "lambda_raw", "prop47_margin_actual"):
+        assert i1[key] == i2[key], key
+    assert i2["active"] is False and i2["lambda_eff"] == 0.0 and i2["lambda_raw"] == 0.0
 
 
 def test_pcd_alpha_is_tau_minus_c_for_unit_vectors():
@@ -124,7 +133,7 @@ def test_pcd_alpha_is_tau_minus_c_for_unit_vectors():
         )
         _, info = pcd.combine({"ce": g1, "kd": g2})
         assert info["lambda_eff"] == pytest.approx(max(0.0, 0.2 - info["cos_raw"]), abs=1e-12)
-        assert info["cos_norm"] == pytest.approx(info["cos_raw"], abs=1e-12)
+        assert info["dot_norm"] == pytest.approx(info["cos_raw"], abs=1e-12)
 
 
 # ---- PCGrad (required test 8) ----
@@ -192,3 +201,47 @@ def test_bad_hyperparameters():
         PCD(-0.1)
     with pytest.raises(ValueError):
         NormalizedWeightedSum(math.inf)
+
+
+def test_adaptive_lambda_zero_primary_reviewer_input():
+    """Codex review F4: g1 = [0, 0], g2 = [1, 0], tau = 0.2 must not report an active step."""
+    g1, g2 = torch.zeros(2), torch.tensor([1.0, 0.0])
+    _, ip = PCD(0.2).combine({"ce": g1, "kd": g2})
+    d, ia = AdaptiveLambda(0.2).combine({"ce": g1, "kd": g2})
+    assert torch.all(d == 0)
+    assert (ia["active"], ia["lambda_eff"], ia["lambda_raw"]) == (False, 0.0, 0.0)
+    assert (ip["active"], ip["lambda_eff"], ip["lambda_raw"]) == (False, 0.0, 0.0)
+
+
+def test_dot_norm_is_inner_product_not_cosine():
+    """Codex review F2: dot_norm = g~1.g~2 may leave [-1, 1]; cos_raw is the true angle."""
+    comb = NormalizedWeightedSum(0.5, beta=0.9)
+    g1 = torch.tensor([1.0, 0.0], dtype=torch.float64)
+    comb.combine({"ce": g1, "kd": g1})  # warm-up at norm 1
+    _, info = comb.combine({"ce": 10 * g1, "kd": 10 * g1})  # norm jump -> ||g~|| > 1
+    assert "cos_norm" not in info
+    assert info["cos_raw"] == pytest.approx(1.0)
+    s1, s2 = info["scale_primary"], info["scale_secondary"]
+    assert info["dot_norm"] == pytest.approx(s1 * s2 * 100.0)
+    assert info["dot_norm"] > 1.0
+
+
+def test_nwkd_actual_margin():
+    comb = NormalizedWeightedSum(0.7)
+    g1 = torch.tensor([1.0, 2.0, 0.0], dtype=torch.float64)
+    g2 = torch.tensor([-3.0, 0.5, 1.0], dtype=torch.float64)
+    d, info = comb.combine({"ce": g1, "kd": g2})
+    g1n = info["scale_primary"] * g1
+    expected = 1.0 + 0.7 * info["dot_norm"] / float(g1n @ g1n)
+    assert info["prop47_margin_actual"] == pytest.approx(expected, rel=1e-12)
+    # the final rescale preserves the sign of the margin
+    assert math.copysign(1, float(g1 @ d)) == math.copysign(1, expected)
+    assert info["prop47_margin_unit"] is None  # no tau
+
+
+def test_one_sided_pcgrad_method_name_is_unambiguous():
+    _, info = PCGrad().combine({"ce": torch.ones(2), "kd": -torch.ones(2)})
+    assert info["method"] == "pcgrad_onto_primary"
+    from pcdkd.optim.combiners import COMBINERS
+
+    assert "pcgrad" not in COMBINERS and COMBINERS["pcgrad_onto_primary"] is PCGrad

@@ -24,7 +24,7 @@ pytestmark = pytest.mark.integration
 FACTORIES = {
     "wkd": lambda: WeightedSum(0.5),
     "nwkd": lambda: NormalizedWeightedSum(0.3),
-    "pcgrad": lambda: PCGrad(),
+    "pcgrad_onto_primary": lambda: PCGrad(),
     "pcd": lambda: PCD(0.1),
     "adaptive_lambda": lambda: AdaptiveLambda(0.1),
 }
@@ -80,12 +80,13 @@ def test_training_finite_populated_deterministic(name):
     assert all(math.isfinite(c) and math.isfinite(k) for c, k in l1)
     s = a1.summary()
     assert s["steps"] == 50
-    for key in ("cos_raw", "cos_norm", "norm_primary", "norm_secondary", "lambda_eff"):
+    for key in ("cos_raw", "dot_norm", "norm_primary", "norm_secondary", "lambda_eff"):
         assert s["numeric"][key]["count"] == 50, key
     assert set(s["fractions"]) >= {"active", "feasible"}
     assert 0.0 <= s["fractions"]["active"] <= 1.0
     if name in ("pcd", "adaptive_lambda"):
-        assert s["numeric"]["prop47_margin"]["count"] == 50
+        assert s["numeric"]["prop47_margin_actual"]["count"] == 50
+        assert s["numeric"]["prop47_margin_unit"]["count"] == 50
         assert s["prop47_nonpositive_fraction"] is not None
         print(f"{name}: active fraction = {s['fractions']['active']:.3f}")
     # determinism across two identical runs
