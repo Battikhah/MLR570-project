@@ -10,3 +10,16 @@ student: resnet8
 tau: 0.1
 temperature: 4.0
 learning_rate: 0.1
+method: pcd
+lambda_grid: [0.0, 0.1, 0.5, 1.0]
+tau_grid: [0.05, 0.1, 0.3]
+beta: 0.9
+epsilon: 1.0e-8
+gate_mode: none
+gate_q: 0.8
+momentum: 0.0
+weight_decay: 0.0
+lr_schedule: cosine
+val_size: 5000
+temperature_grid: [2.0, 4.0, 8.0]
+select_temperature_on_val: true

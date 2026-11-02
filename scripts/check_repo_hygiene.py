@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 PATTERNS = re.compile(
-    r"(^|/)(?:datasets?|checkpoints?)(/|$)|(^|/)(?:cifar|checkpoint|ckpt|weights?)[^/]*(?:$|[._-])|\.(?:pt|pth|ckpt|safetensors)$",
+    r"\.(?:pt|pth|ckpt|safetensors|npz|npy|h5|onnx|tar\.gz|zip)$|"
+    r"(^|/)(?:datasets?|checkpoints?|outputs)/(?!README\.md$)|^data/(?!README\.md$)",
     re.I,
 )
 SECRETS = re.compile(
@@ -19,6 +20,8 @@ def check(paths, root=Path(".")):
     errors = []
     for name in paths:
         path = root / name
+        if not path.exists():
+            continue
         if "Project Files/" not in name and path.stat().st_size > 5 * 1024 * 1024:
             errors.append(f"oversized tracked file: {name}")
         if PATTERNS.search(name):
