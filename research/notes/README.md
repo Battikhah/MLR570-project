@@ -1,0 +1,1 @@
+# Research notes (dated, labelled VERIFIED / INTERPRETATION / HYPOTHESIS / RECOMMENDATION).

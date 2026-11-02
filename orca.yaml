@@ -1,0 +1,9 @@
+# Orca worktree setup for AML-Code-and-Paper (Python + Markdown/LaTeX project).
+# Idempotent and side-effect free when no Python project exists yet.
+scripts:
+  setup: |
+    if [ -f pyproject.toml ] && [ -f uv.lock ] && command -v uv >/dev/null 2>&1; then
+      uv sync --frozen
+    else
+      echo "orca setup: no pyproject.toml/uv.lock (or uv missing); nothing to install"
+    fi
