@@ -111,3 +111,67 @@ PCGrad, CAGrad, FAMO, Nash-MTL) treat the objectives as interchangeable, which t
 ## Datasets / benchmarks used
 
 CIFAR-10, CIFAR-100 (pruning, K = 3 sparsity/low-rank); synthetic problems.
+
+## Code audit (static, cross-review 2026-11-02)
+
+Repository `github.com/DaraVaram/priority-constrained-descent`, cloned with `--depth 50` to /tmp/pcd-review/pcd-code
+(outside this repo). Nothing was installed. Codex owns the formal repository record in `literature/repositories.yaml`;
+this section is my audit note.
+
+- **HEAD / history (VERIFIED, git log).** `e9afdbc9f4cb09343934eadb31dc72ea5ebac9b0`, 2026-09-29 01:30 +0400,
+  author "dara" (DaraVaram noreply). Only 3 commits: 8000bb8 and 713a4a9 on 2026-09-21, then e9afdbc.
+- **License (VERIFIED).** MIT, "Copyright (c) 2026 Dara Varam and Mohamed I. AlHajri".
+- **Dependencies (VERIFIED, pyproject.toml).** Python ≥3.9; numpy, torch>=1.13. Extras: torchvision (experiments),
+  matplotlib (examples), pytest (test). No versions are pinned and there is no lock file.
+- **QP (VERIFIED, `pcd/qp.py:27-76`).**
+  - KKT working-set enumeration on the normalized Gram matrix.
+  - b_j = τ‖g̃_j‖² − g̃_jᵀg̃1 (line 56); inactive shortcut (line 57, Cor. 4.3); zero secondaries ignored (line 61);
+    infeasible → weights e_0, i.e. primary only (line 76, Alg. 1).
+  - Matches Def. 4.1 / App. B.2.
+  - τ is checked only for ≥ 0 (`optim.py:54`); τ > 1 is accepted silently.
+- **EMA (VERIFIED, `pcd/normalize.py:34-38`).** v ← βv + (1−β)‖g‖², bias correction, s = 1/√(v̂+ε), as in Def. 4.5.
+  The comment at lines 36–37 says the research code used 1/(√v̂+ε).
+- **Rescale (VERIFIED, `pcd/optim.py:97-110`).** g1 = 0 → zero update (line 97); d* = d̃*·‖g1‖/‖d̃*‖ (line 109).
+  Matches Alg. 1.
+- **The release is a rewrite, not the research code (VERIFIED, experiments/README "Relation to the research code").**
+  The authors report the solver agreeing with the research code to 1e-11 / 2e-10.
+- **Tests.** `tests/test_qp.py` (9 tests, 77 parametrized cases) and `tests/test_optim.py` (8 tests, needs torch).
+  The package `__init__` imports torch, so tests cannot run as-is without installing it. I ran `test_qp.py` against
+  a numpy-only shim exposing `pcd/qp.py`: **77 passed, exit 0**. I did not run `test_optim.py`.
+- **Seeds / determinism (VERIFIED, `experiments/train.py:137-139`).** random, numpy and torch seeded.
+  `cudnn.benchmark = True` and no deterministic-algorithms flag. DataLoader shuffling relies on the global torch RNG.
+  The device defaults to cuda, else cpu (`train.py:59`; `--device mps` must be passed explicitly).
+- **Data (VERIFIED, `train.py:68-72`).** torchvision CIFAR10/100 with `download=True` into `./data` (`--data-dir`).
+- **MPS risk (HYPOTHESIS, untested).** `optim.py:87` calls `.double()` on device tensors *before* `.cpu()`. PyTorch
+  MPS does not support float64 (multiple PyTorch forum / Lightning issue reports), so this line will likely raise on
+  an M4. A one-line local patch (`.cpu().double()`) would be needed.
+- **Reproduction of the paper's tables (VERIFIED, experiments/README "Not included").**
+  - **Physical pruning export is not released.** That covers Fig. 4, Tables 1, 2, 6, 7 and the FLOPs/latency/size
+    numbers.
+  - **"This repository contains PCD only"**: no WS, MGDA, PCGrad, CAGrad, FAMO, AuxiNash, DBGD, Cooper or
+    proximal-GL baselines, so the normalized-WS λ grid cannot be checked in code.
+  - The sweeps reproduce PCD runs only: 800 + 180 runs × 300 epochs, about 3.6 h per K=2 ResNet-34/CIFAR-100 run on
+    an A10G.
+- **Undisclosed proximal step (VERIFIED in code docs; NOT in the paper).**
+  - experiments/README and the `objectives.py:31-32` comment say: "The paper's runs applied one [proximal step] after
+    every optimizer step with threshold lambda * lr". Group soft-threshold, λ = 1e-3 (5e-4 for MobileNetV2).
+  - `sweeps.sh` passes `--prox` for every PCD run, including τ = 0.
+  - Paper App. H (reproducibility) and Sec. 5 describe proximal soft-thresholding only as a *baseline*
+    ("proximal group lasso", Sec. 5.1.2). A grep of v2 for "prox" finds no statement that PCD runs used it.
+  - INTERPRETATION: the reported "native group sparsity" (norm < 1e-4) of PCD is therefore produced by PCD **plus**
+    a small proximal snap. Whether the baselines received the same step is not stated (UNVERIFIED).
+  - Mitigating [EE]: App. E.4 (ResNet-34/CIFAR-100) shows PCD at τ = 0 with 0.00% native sparsity and proximal GL
+    alone at λ = 0.01 with 0.00%, so the λ = 1e-3 snap alone creates no measurable sparsity. Its interaction with
+    PCD at τ > 0 is untested [UH].
+- **Model selection (VERIFIED, App. H p. 51 and the README checklist).** "No held-out validation split was used";
+  baselines are reported at their highest mean *test* accuracy, PCD at fixed τ = 0.02 unless swept.
+- **Compute (VERIFIED, App. H).** For K = 2 the full PCD deployment costs < 2% over WS (3.64 vs 3.58 h on an A10G),
+  because the group-lasso gradient is a weight-only function. My earlier "≈2× cost for K = 2" applies only when both
+  objectives need a full network backward (e.g. KD), not to regularizer secondaries.
+- **Provenance.**
+  - The GitHub profile `DaraVaram` lists company EPFL / Lausanne, while the paper lists AUS + MIT and the project page
+    gives varam@mit.edu.
+  - Same-account evidence: the github.io project pages; AUS course repos (`MLR503-Final`, `MLR510-Final`,
+    `MLR555-Advanced-AI`, `COE49412`); `QuantizationSurvey`; and the CITATION.cff naming both authors.
+  - INTERPRETATION: one person, whose profile affiliation is newer than the paper's. Provenance is adequate,
+    though not independently confirmed by the authors.

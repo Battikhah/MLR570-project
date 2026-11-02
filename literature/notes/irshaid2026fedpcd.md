@@ -6,9 +6,11 @@ Read 2026-11-02 by the Claude literature worker. Source: arXiv 2610.13508v1 PDF 
 ## Bibliographic status (VERIFIED)
 
 - Authors: Yousef Irshaid, Dara Varam (equal contribution), Mohamed I. AlHajri; AUS CSE (+ MIT for Varam).
-- arXiv v1 2026-10-09, cs.LG. **Preprint**: no journal_ref, and no venue, review, or acceptance found.
-- Project page daravaram.github.io/FedPCD links the arXiv paper. GitHub `DaraVaram/FedPCD` is the project-page repo
-  (no license); **no training code release was found**.
+- arXiv v1 2026-10-09, cs.LG. **Preprint**: no journal_ref. The project-page repo README says "preprint, under review"
+  (venue not named). (Corrected in the cross-review, 2026-11-02.)
+- Project page daravaram.github.io/FedPCD links the arXiv paper. Its "Code" button is wired in `js/main.js` as
+  `code: ""` with the comment `// code release, e.g. "https://github.com/DaraVaram/fedpcd"`, and shows "Coming soon".
+  The repo README says "Code is empty until the code is public". **No FedPCD code is released (VERIFIED 2026-11-02).**
 - The survey draft mentions "FedPCD" at L195 without a citation; this record supplies it.
 - Name collisions: unrelated GitHub repos `LiFan0304/FedPCD` and `StandWolf/FedPCD` ("Prototype-Cross Distillation
   for Multimodal Federated Learning") are not this work.
@@ -60,6 +62,11 @@ Read 2026-11-02 by the Claude literature worker. Source: arXiv 2610.13508v1 PDF 
 
 ## Critical reading (INTERPRETATION / possible weaknesses to test)
 
+0. **Cross-review correction (2026-11-02): τ cherry-picking does not explain the headline.** Computed from Table 1
+   at a single fixed τ = 0.02: FedPCD has the highest global accuracy in **18/18** configurations and the best
+   worst-10% accuracy in **15/18** (the paper reports 17/18 with τ chosen per configuration). The losses are
+   Fashion-MNIST 10% at α = 0.01 and α = 0.1 (FedLF), plus CIFAR-10 at 10%, α = 0.01 (FedLF 56.93 vs 56.71). The grid-size concern below
+   still applies to the margins, not to the existence of a gain.
 1. **Search-effort asymmetry.** The FedPCD grid is τ ∈ {6 values} × H ∈ {0..10}; most baselines get 3 values
    (App. A, Table 2). The selection rule is "best performing hyperparameters per dataset after averaging the five
    seeds", and all metrics are measured on client test partitions at the final round. **No separate validation

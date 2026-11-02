@@ -56,7 +56,9 @@ outcome (5 = low risk).
   - Confidence-only gates gave little benefit in CHAD.
   - Tuned scalarization matches MTO methods (`xin2022mtohelp`, `kurin2022unitary`).
   - Momentum flips the secondary-progress sign often (PCD App. G).
-- **Benchmarks.** CIFAR-100, CIFAR-10 (download size not checked here; Codex vets datasets). A ResNet-32 teacher must be trained or obtained.
+- **Benchmarks.** CIFAR-100 and CIFAR-10. The official page lists the python archives at 161 MB and 163 MB, both
+  under the 200 MB approval threshold; it states no licence and asks users to cite the Krizhevsky 2009 tech report
+  (VERIFIED in the cross-review, 2026-11-02). A ResNet-32 teacher must be trained or obtained.
 - **Feasibility.**
   - Small students (ResNet-8/14) are cheap per run.
   - The planned matrix is large: about 11 methods × τ grid {0, 0.1, 0.3, 0.5} × 3 corruption levels × 5 seeds
@@ -94,8 +96,18 @@ outcome (5 = low risk).
 - **Benchmarks.** CIFAR-10/100 with small ResNets (ResNet-20/32) or the paper's models at reduced epochs. Synthetic
   conflict problems from PCD Sec. 5.3. Optional K = 3 (ℓ1 + nuclear norm).
 - **Feasibility.**
-  - K = 2 → 2 backprops/step. A τ sweep of about 6 points × 3 methods (PCD, normalized WS λ = τ, tuned raw WS)
-    × 3 seeds on CIFAR-10 is about 54 runs.
+  - Cost: the group-lasso secondary is a weight-only function, and the paper measures < 2% PCD overhead over WS
+    for K = 2 (App. H). My earlier "2 backprops/step" overstated the cost (corrected in the cross-review).
+  - A τ sweep of about 6 points × 3 methods (PCD, normalized WS λ = τ, tuned raw WS) × 3 seeds on CIFAR-10 is about
+    54 runs.
+  - Caveats found in the code audit (VERIFIED):
+    - The published PCD runs added a proximal group soft-threshold (λ = 1e-3) after every step, which the paper does
+      not disclose for PCD. Every arm must be run with and without `--prox`.
+    - The physical-pruning export is not released.
+    - The repo has no baselines.
+    - The sparsity metric is schedule-dependent ("most of the measured sparsity appears in the last few epochs"),
+      so shortened schedules must keep the cosine-to-zero shape.
+    - `optim.py:87` likely needs a float64→cpu reorder to run on MPS.
   - The public MIT code lets the team check implementation details. Codex is auditing it.
   - Logging cos(g1, g2), constraint activity, and realized-step sign is cheap and directly tests the theory.
   - HYPOTHESIS: feasible on an M4 with ≤ 100-epoch schedules. A smoke test is needed to estimate per-epoch time.
@@ -236,3 +248,10 @@ Whatever is chosen, include:
 - an EMA-normalized weighted sum at λ = τ;
 - logged cos(g1, g2), constraint-activity rate, and realized-step sign;
 - paired seed differences.
+
+---
+
+**Revision (cross-review round 1, 2026-11-02).** The merged scoring in `docs/reviews/phase4-claude-reviews-codex.md` §4
+keeps D2 (merged as M1) as top-1. It changes the **backup from D3 to a reduced D1** (KD with the λ = τ
+normalized-WS control). The reasons are that FedPCD has no released code (project-page Code link is empty, "Coming
+soon") and that D1 fits the submitted MLR570 proposal. D3 is now third.

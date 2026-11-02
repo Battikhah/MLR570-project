@@ -18,7 +18,7 @@ evidence, **[UNTESTED]** hypothesis nobody has tested.
 | Status | **Published, TMLR, Sept 2026** (VERIFIED: TMLR list + bib, arXiv journal_ref, PDF header) | **arXiv preprint**, v1 2026-10-09; no venue found (VERIFIED: arXiv) |
 | arXiv | 2606.29521 (v1 2026-06-28, v2 2026-09-21) | 2610.13508 (v1) |
 | OpenReview | forum HT01yGHLEt (listed by TMLR; page itself blocked by a bot challenge) | none found |
-| Code | github.com/DaraVaram/priority-constrained-descent (MIT; author-linked by README and project page; **not linked from the paper PDF**). Audit delegated to Codex. | **none found** (only a project-page repo) |
+| Code | github.com/DaraVaram/priority-constrained-descent (MIT; author-linked by README and project page; **not linked from the paper PDF**). Static audit in literature/notes/varam2026pcd.md: a rewrite of the research code, PCD only (no baselines), no physical-pruning export, published runs used an undisclosed proximal step. | **none released**: project-page Code button is `code: ""`, "Coming soon" (VERIFIED in the cross-review) |
 
 VERIFIED corrections to the survey draft:
 - The PCD TMLR status (draft L185, "not directly verified") is now verified.
@@ -151,7 +151,9 @@ component". This is close to PCD-KD at τ = 0 or small τ.
    teacher" regime the KD proposal targets.
 5. **Realized steps differ from the guaranteed direction [EMPIRICAL, App. G].** Under SGD+momentum, the sign of
    secondary progress flips on 47–73% of steps. The KD proposal plans SGD without momentum, then with momentum.
-6. **FedPCD evaluation gaps [INTERPRETATION]:**
+6. **FedPCD evaluation gaps [INTERPRETATION].** Correction from the cross-review: at a fixed τ = 0.02 FedPCD still
+   has the best global accuracy in 18/18 configurations and the best worst-10% accuracy in 15/18 (computed from
+   Table 1), so τ selection alone does not create the headline. Remaining gaps:
    - No FedProx/SCAFFOLD/FedNova controls.
    - Larger hyperparameter grid for FedPCD (6τ × 11H) than for the baselines (≤ 3 values).
    - No validation split described for hyperparameter selection.
@@ -191,6 +193,9 @@ the original group.**
 
 ## 6. What I could not verify
 
+- RESOLVED in the cross-review: the FedPCD code link (empty, "Coming soon") and the PCD repo HEAD (e9afdbc, 2026-09-29).
+- NEW (cross-review): whether the PCD *baselines* received the same proximal step that the published PCD runs used
+  (the code README says the PCD runs did; the paper is silent).
 - The OpenReview forum HT01yGHLEt (reviews, decision text, camera-ready supplementary). Every OpenReview request
   returned a bot challenge (HTTP 403).
 - FedPCD venue and submission status (only arXiv v1 found). No FedPCD code.
