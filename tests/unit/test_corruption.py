@@ -26,7 +26,8 @@ def test_zero_rate_is_identity():
     labels = np.array([0, 1, 2])
     logits = np.array([[2., 0., 0.], [0., 2., 0.], [0., 0., 2.]])
     assert make_corruption_map(labels, np.arange(3), 0, 0) == {}
-    assert np.allclose(corrupted_teacher_distribution(logits, labels, {}), np.exp(logits) / np.exp(logits).sum(1, keepdims=True))
+    expected = np.exp(logits) / np.exp(logits).sum(1, keepdims=True)
+    assert np.allclose(corrupted_teacher_distribution(logits, labels, {}), expected)
 
 
 def test_map_json_roundtrip(tmp_path):

@@ -9,7 +9,10 @@ PATTERNS = re.compile(
     r"(^|/)(?:datasets?|checkpoints?)(/|$)|(^|/)(?:cifar|checkpoint|ckpt|weights?)[^/]*(?:$|[._-])|\.(?:pt|pth|ckpt|safetensors)$",
     re.I,
 )
-SECRETS = re.compile(r"AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----|\bgh[po]_[A-Za-z0-9]{20,}\b")
+SECRETS = re.compile(
+    r"AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----|"
+    r"\bgh[po]_[A-Za-z0-9]{20,}\b"
+)
 
 
 def check(paths, root=Path(".")):

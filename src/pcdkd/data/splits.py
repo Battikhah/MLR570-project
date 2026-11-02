@@ -14,7 +14,7 @@ def stratified_split(labels, val_size=5000, split_seed=0):
     allocations = np.floor(raw).astype(int)
     for i in np.argsort(-(raw - allocations))[: val_size - allocations.sum()]:
         allocations[i] += 1
-    for ids, nval in zip(class_ids, allocations):
+    for ids, nval in zip(class_ids, allocations, strict=True):
         ids = ids.copy()
         rng.shuffle(ids)
         val.extend(ids[:nval])
