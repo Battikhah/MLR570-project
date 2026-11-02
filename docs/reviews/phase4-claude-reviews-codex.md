@@ -57,7 +57,7 @@ Codex's `literature/repositories.yaml` are in §3.
 - The repo `DaraVaram/FedPCD` README: an empty link "says 'Coming soon'"; "Code is empty until the code is public";
   the paper is a "preprint, under review".
 - The repo contents are only `README.md, index.html, css/, js/, assets/, .nojekyll`.
-- **No official FedPCD code exists as of 2026-11-02.**
+- **FedPCD code is not publicly released as of 2026-11-02** (an announced "Coming soon" link; this does not mean no code exists privately).
 - For comparison, the PCD page's `main.js` has `code: "https://github.com/DaraVaram/priority-constrained-descent"`.
 
 ### 1.3 Codex's math, checked against the papers and numerically
@@ -185,7 +185,7 @@ Scores are 1–5, 5 best. Each justification carries its evidence type.
   independent replication].
 - **(c) 4.** There is no independent evaluation; drift controls and multi-epoch behaviour are untested (FedPCD §6) [UH].
 - **(d) 4.** FMNIST/CIFAR-10 Dirichlet splits are standard (Acar et al. protocol); the FMNIST licence is ambiguous.
-- **(e) 2.** No code released (§1.2); full re-implementation plus a many-constraint QP solver are needed;
+- **(e) 2.** Code not publicly released as of 2026-11-02 (§1.2); full re-implementation plus a many-constraint QP solver are needed;
   hyperparameter selection is not described.
 - **(f) 4.** Small models; corrected arithmetic gives 1.5–3k client-epochs per seed (§2 #15) [UH timing].
 - **(g) 2.** Topic change from the KD proposal; weak link to the KD survey.
@@ -313,3 +313,192 @@ INTERPRETATION: the totals are unweighted sums of my scores. A coordinator who w
 - The contents of the author's `LibMTL` / `TorchJD` forks.
 - CIFAR-10-C and Waterbirds/CelebA sizes and licences.
 - All M4 throughput numbers, from both agents.
+
+---
+
+## Round 2 (final), 2026-11-02
+
+**Scope.** Responses to Codex's round-1 review of my work (`Battikhah/research-math-codex:docs/reviews/phase4-codex-reviews-claude.md`
+@ `bb005c4`), and the attack on coordinator candidate S.
+
+**New primary reads this round:**
+- PCD v2 App. E.3 Table 10 (p. 44), App. E.4 Table 11, App. G Table 18 (p. 50–51);
+- SCKD (CVF open-access PDF);
+- DTO-KD (ICLR 2026 proceedings PDF);
+- TPKD (arXiv 2609.39338);
+- CHAD (arXiv 2607.19956);
+- SCOPE (Europe PMC full text PMC13613376, CC BY; the MDPI site returned 403);
+- DHO (arXiv 2505.07675, new);
+- GAQAT arXiv metadata;
+- PCD project page.
+
+### R2-A. Item-by-item response to Codex's review of my work
+
+| # | Codex point | My response | Evidence |
+|---|---|---|---|
+| A1a | "Normalized-WS control wholly untested" is wrong as worded | **ACCEPT.** | App. E.2 tested EMA-normalized baselines on w ∈ {0.1, 0.2, 0.4, 0.6, 0.8, 1} (Table 9 caption: "same as Sec. 5.1's w-grid"). App. E.4 Table 11 tuned *raw* scalarization at λ_eff ∈ {1e-4, 3e-4, 1e-3, 3e-3, 1e-2}; e.g. λ = 3e-4 gives 72.71 ± 0.56% at 77.77% sparsity vs PCD τ = 0.01 at 73.03% / 77.26% (Δ +0.32, within noise), and λ = 1e-3 gives 70.49% / 88.51% vs PCD τ = 0.02 at 70.92% / 87.50%. The missing control is narrowly the **low-weight, EMA-normalized, rescale-matched** sum. All my files are reworded (corrections C1–C3). |
+| A1b | Exact coefficient α = τ − aᵀb/‖b‖²; simplex weight w = α/(1+α); √(1+τ²) norm discrepancy | **ACCEPT; independently confirmed.** | The derivation follows from PCD Cor. 4.6. For unit a, b: ‖a+αb‖² = 1 + 2αc + α² = 1 + τ² − c² when α = τ − c, so √(1+τ²) at c = 0. **New [EE]:** PCD App. E.3 Table 10 (ResNet-34/CIFAR-100) shows CE efficiency cos(d*, g1) = 1.000 / 0.999 / 0.994 / 0.976 at τ = 0.01 / 0.05 / 0.10 / 0.20. The c = 0 prediction 1/√(1+τ²) gives 1.000 / 0.999 / 0.995 / 0.981. Direction deviation is 0.0168 / 0.0510 / 0.1067 / 0.2187 ≈ τ. The constraint is active on 100% of steps, conflict frequency is 0.41–0.47 and severity ~1e-5, and the authors write "There is little conflict to resolve" (p. 43). Codex's E.3 figures are VERIFIED. |
+| A1c | "No conflict" too strong: negative signs frequent but tiny | **ACCEPT.** | Table 10, as above. |
+| A1d | App. G sign flips 70.4 / 47.2 / 73.3 / 54.3% (SGD+m), Adam 0.2–7.7% | **ACCEPT, VERIFIED** (Table 18, p. 51). | Additional point from App. G: the SGD+momentum control "lands on the same frontier at matched sparsity" (67.81 ± 0.16 at 92.55% vs PCD-Adam 68.42 at 92.24%). The per-step guarantee does not determine the outcome [EE]. |
+| A1e | 73.0 vs 27.3 is tied to the 80% target | **ACCEPT** | Table 2. |
+| A2 | "No FedPCD code exists" is unsupported | **ACCEPT the wording correction.** | The facts were resolved in round 1 (`js/main.js` `code: ""`, "Coming soon"; README "Code is empty until the code is public"). All my files now say "**not publicly released as of 2026-11-02**" (C4). |
+| A2b | "Validation split: unsupported if stated categorically" | **ACCEPT for FedPCD.** My notes already say "not described … may have been selected on test data (unverified)". For **PCD** it is categorical and VERIFIED. | PCD App. H p. 51: "No held-out validation split was used"; baselines at their highest mean test accuracy. |
+| A3 | D5 "high scooping risk" unsupported; GAQAT is prior gradient-conflict QAT | **ACCEPT both.** | PCD project page (fetched this round) lists "Quantization-aware training" as an example application. That is overlap, not evidence of a competing project, so "high" is withdrawn. GAQAT registered as `jiang2024gaqat` (arXiv 2412.05551, v1 2024-12-07, Jiang, Meng, Tang, Yu, Li, Wang, Zhu; no journal_ref; preprint). D5 corrected (C5). |
+| A4a | D1 novelty "incremental" | **AGREE** (my D1 already said "That is incremental"). | — |
+| A4b | Remove "any outcome is publishable" | **ACCEPT.** | Removed from the D2 table row and the recommendation (C6). Replaced with "outcome largely predictable from App. E.3 Table 10". |
+| A5 | D6 "essentially identical" is an interpretation | **ACCEPT.** | Kept as INTERPRETATION; exact margin, scale and optimizer differences from ε-SOFT-GEM are unverified (its full text is not read). |
+| A6 | D4 "no PCD fairness method found" is a search result, not proof | **ACCEPT.** | Already labelled "search-limited". |
+
+**Consequence for M1 (D2).** Table 10 already shows, in the authors' own data, that in compression PCD behaves as
+the c ≈ 0 normalized sum predicts. M1's remaining question is therefore narrower and its outcome largely
+predictable. I lower **M1 (b) 3 → 2 and (c) 3 → 2, so M1 totals 25/35** (was 27).
+
+### R2-B. Attack on coordinator candidate S
+
+#### (i) Is there existing evidence that the CE–KD gradient cosine is materially negative?
+
+| Source | Measured CE–KD gradient statistic? | What it reports |
+|---|---|---|
+| **DHO** `kang2025dho` (arXiv 2505.07675; "Accepted at NeurIPS 2026" per arXiv comment) | **YES** | App. G.2 Table 26: single-head CE+KD, final-epoch cos(∇θ L_CE, ∇θ L_KD), 8-dataset mean. layer1 **−0.392**, layer2 −0.393, layer3 −0.405, layer4 **−0.453**, classifier head **−0.757**. Table 27, layer4: EuroSAT −0.80, DTD −0.67, FGVC-Aircraft −0.62. Fig. 3: the 10-dataset average cosine "turns negative" (graphical). **Setting:** 16-shot labels, CLIP RN50 zero-shot teacher, ResNet-18 student, not full-data CIFAR-100. **[TG] Prop. 1 / Cor. 1:** at a linear head the CE–KD inner product is ∝ ‖p̂−m‖² − r² (m = (y+p)/2, r = ‖y−p‖/2), so conflict is guaranteed whenever the student prediction lies in the ball with diameter [y, p]; for p̂ = (1−t)y + tp it equals −t(1−t)‖p−y‖². |
+| **DTO-KD** `hayder2026dtokd` | Plot only | Fig. 1 (p. 2): "conflict score" ⟨g_dist, g_task⟩ (a **raw inner product**, not a cosine) over 500 iterations on the **COCO detection** task, for DTO-KD vs Roy Miles & Deng (2024). Values are graphical and not extractable from text; there is no CIFAR classification statistic. |
+| **SCOPE** `chen2026scope` | Plot only | Eq. (10) detects conflict as ρ = cos(g_CE, g_KD) < δ = 0. Fig. 3 plots cos(g_CE, g_KD) against teacher entropy at epochs 1/50/100 on the Multiple Myeloma dataset for No-GCR / PCGrad / CAGrad / GCR. **No numeric summary** in the text; the figure image was not retrievable (Europe PMC / NCBI 403/404). |
+| **SCKD** `zhu2021sckd` | No | Fig. 1 is a schematic. Table 6 sweeps the cosine threshold **ϕ ∈ {1.2, 1.1, 1.0, 0.9, 0.8}** with Top-1 75.2 / 75.1 / 75.4 / 75.0 / 74.9 (CIFAR-100). **A cosine threshold above 1 is impossible**, a second internal inconsistency to add to the one the survey draft already flags. A 0.5-point spread suggests the gating threshold barely matters [EE]. |
+| **TPKD** `yuan2026tpkd` | Output-space only | Mechanism: once label learning makes the student "more discriminative" than the teacher, "moving its full prediction closer to the teacher then requires giving back some of that discrimination" (Intro, p. 1). Table 2 / §6: "unprojected learning loses at least one CE-step margin on every example" (2 states × 32 batches × 64, output-step protocol). No parameter-space CE–KD cosine. |
+| **CHAD** `sumit2026chad` | Related (val-CE vs per-sample KD) | s(x) = cos(∇θ L_val, ∇θ L_KD(x)) on a 5,000-sample probe: **51.3%** of samples harmful or neutral (s ≤ 0). Useful mean **+0.162 ± 0.110**, harmful mean **−0.168 ± 0.112**. Teacher-confidence features correlate at \|r\| ≤ 0.09 (r² < 0.007) with usefulness (§5.2, Table 2). Bangla summarization, not vision. |
+
+**Answer to (i).**
+- Materially negative CE–KD cosines **have been measured**, but only in DHO's few-shot VLM-teacher setting:
+  −0.39 to −0.45 in the backbone and −0.76 at the head [EE]. They are also **guaranteed at the head by geometry**
+  whenever the student lies between label and teacher [TG, DHO Prop. 1].
+- **No source found** reports CE–KD cosine statistics for full-data CIFAR-100 KD with a trained CNN teacher.
+- **No source found** measures how teacher corruption changes the conflict.
+- INTERPRETATION from DHO Cor. 1: head-level conflict magnitude scales with ‖p − y‖². A confidently *wrong* teacher
+  has ‖p − y‖² ≈ 2, while a confidently correct one (p_y = 0.9) has ≈ 0.01. Corruption should therefore increase
+  head conflict by orders of magnitude. This covers the head only and uses inner products, not cosines [UH].
+
+#### (ii) Could the gate remove the conflict, so that PCD ≈ normalized WS again?
+
+**Yes, largely by construction (VERIFIED from the proposal design).**
+- The proposal's L2 admits only examples where the teacher is **correct and** max-prob > q (proposal pp. 2–3).
+- S's corruption replaces outputs with **high-confidence wrong** predictions. Every corrupted output fails the
+  correctness test, so **in the gated arms the 10/30% corruption dial is filtered out** and only reduces the
+  number of KD examples.
+- What remains is correct-teacher conflict, whose head magnitude scales with ‖p − y‖² (small for confident
+  correct teachers, DHO Cor. 1). The survey draft's worked example (CE–KD logit inner product −0.0077 for a correct
+  0.85-confidence teacher) is consistent with this: present but small.
+- HYPOTHESIS [UH]: gated PCD and gated normalized WKD will be close.
+- **Consequence:** the conflict dial only works in the **ungated** arms. S's "gated PCD vs gated normalized WS"
+  contrast tests the gate, not the projection.
+
+#### (iii) Do the missing common stationary point and Prop. 4.7 make the comparison ill-posed?
+
+**Not ill-posed; informative, but the theory predicts against PCD in the corrupted regime.**
+
+1. **No fixed point (PCD §4.8, p. 12).** With τ > 0 and no common stationary point, the PCD direction never
+   vanishes. Training is still finite-horizon with a cosine schedule to zero, so final accuracy is well-defined
+   [EE-type evaluation]. This is a test *outside* PCD's theory scope, which should be stated.
+2. **Prop. 4.7 thresholds at DHO-like conflict.** The CE-ascent threshold is τ* = (1−c²)/(−c):
+   - c = −0.45: τ* = 1.77 (no CE ascent for any τ ∈ [0,1]);
+   - c = −0.76 (head-level): τ* = 0.556;
+   - c = −0.80: τ* = 0.45.
+
+   The proposal's grid τ ∈ {0, 0.1, 0.3, 0.5} reaches the boundary only if the whole-vector cosine approaches the
+   head values [TG + UH].
+3. **Key mechanism point [TG, Cor. 4.6]: S's control is mis-specified.**
+   - In the active regime PCD = g̃1 + μ g̃2 with **μ = τ − c** (unit norms). At c = −0.45 and τ = 0.1, μ = 0.55:
+     PCD is a normalized WS with λ = 0.55, not λ = τ = 0.1.
+   - A constant-λ normalized WS reproduces PCD exactly whenever c is steady. **PCD differs from a tuned normalized
+     WS only through the per-step adaptivity of λ_t = max(0, τ − c_t)**, i.e. when c *varies*, and through the
+     inactive regime (λ_t = 0 when c_t ≥ τ).
+   - The fair control is therefore a normalized WKD with λ **tuned on the same budget**, with a grid containing the
+     pilot-measured τ − c̄. **"λ matched to τ" is a strawman** whenever c̄ is materially non-zero.
+4. **Direction of the predicted effect [TG mechanism, outcome UH].** μ = τ − c *grows* as KD conflicts more with CE.
+   With a corrupted teacher in the ungated arm, PCD therefore puts **more** weight on the harmful KD direction,
+   to guarantee τ-progress on the KD loss. A constant-λ WKD keeps it fixed. So S's implicit hypothesis that PCD
+   protects against unreliable teachers is opposite to PCD's mechanism. PCD protects the secondary, and the
+   primary only through the anchor (Prop. 4.7). SCOPE-style projection, which removes the conflicting KD
+   component, encodes the protection the proposal actually wants.
+
+#### (iv) M4 budget
+
+All counts are runs. Timings are [UH] until a smoke test is run.
+
+| Stage | Design | Runs |
+|---|---|---|
+| Teacher | ResNet-32 on CIFAR-100 (the CIFAR-10 pilot needs its own teacher) | 2 |
+| Pilot, CIFAR-10, 1 seed | CE-only 1; tuned WKD 3 λ × 3 corruption = 9; normalized WKD 4 λ (incl. τ − c̄) × 3 = 12; ungated PCD 3 τ × 3 = 9; gated PCD 3 τ × 3 = 9; gated normalized WKD 3 λ × 3 = 9 | 49 |
+| Selection, CIFAR-100, 1 seed, validation split | Same as the pilot minus CE-only | 48 |
+| Confirmatory, CIFAR-100, 5 seeds | CE-only 5 + 5 arms × 3 corruption × 5 seeds = 75 | 80 |
+| Optional M1 anchor | 1 small ResNet, CE + group lasso, PCD vs normalized WS, ± prox, 3 seeds | 12 |
+| **Total** | | **≈ 190** (≈ 180 without the anchor) |
+
+Cost model:
+- Every KD arm needs two full student backward passes plus a teacher forward. This is unlike compression, where
+  PCD costs < 2% extra (PCD App. H).
+- At an assumed 1,500 img/s effective throughput for ResNet-8 under KD and 60-epoch schedules (3 M images/run),
+  that is ≈ 35 min/run, i.e. **≈ 110 h** total.
+- At Codex's 300 img/s it is ≈ 2.8 h/run, i.e. **≈ 530 h**, which is infeasible on one M4.
+- **The budget is realistic only if a 1-epoch smoke test shows ≳ 1,000 img/s** [UH]. Otherwise cut confirmatory
+  seeds to 3 and corruption levels to {0, 30%}, giving ≈ 100 runs.
+- Engineering prerequisites:
+  - patch `pcd/optim.py:87` for MPS float64 [UH];
+  - `pcd.PCD.backward` already takes per-loss gradients (`optim.py:59-72`).
+
+#### (v) Scores for S, and whether S replaces M1
+
+**S: 25/35**, equal to the revised M1 (25/35).
+- **(a) 3.** PCD's QP applies and its KD behaviour is analytically predictable (μ = τ − c_t) [TG]. The KD secondary
+  is non-convex and has no fixed point (§4.8) [TG negative]. Compatibility is as a *test bed*, not as a likely
+  beneficiary.
+- **(b) 4.** Conflict in KD is material where measured (DHO −0.39 … −0.76) [EE]. The corruption dial and per-step
+  diagnostics make the PCD-vs-adaptive-λ difference directly observable. Whether accuracy differs is [UH].
+- **(c) 3.** No paper compares PCD with a tuned normalized WKD or measures conflict versus teacher corruption
+  (search 2026-11-02). Adjacent work exists: DTO-KD adaptive weights, SCOPE/TPKD projection, SCKD gating [EE].
+- **(d) 4.** CIFAR-100/10 are standard (161/163 MB, citation required); ResNet-8/32 are the proposal's choices.
+- **(e) 3.** The PCD library is reusable (MIT; 77/77 QP tests pass). The teacher must be trained; the corruption
+  protocol is new; no reference KD-PCD code exists.
+- **(f) 3.** About 180–190 runs; feasible only if the throughput smoke test passes [UH].
+- **(g) 5.** It keeps the submitted MLR570 research question about unreliable teachers, and the KD survey
+  (VERIFIED, proposal pp. 2–3).
+
+**Recommendation (RECOMMENDATION): S should replace M1 as top-1, with two mandatory amendments.**
+- With M1's (b)/(c) lowered by Table 10, S ties M1 on total and wins decisively on (g).
+- S is also where the projection-vs-normalization question is not already answered by the authors' data.
+- **Amendment 1:** replace "normalized WKD at λ matched to τ" with a **budget-matched tuned normalized WKD**,
+  with a grid containing τ − c̄ measured in the pilot. Report the per-step λ_t = max(0, τ − c_t) that PCD
+  implicitly uses.
+- **Amendment 2:** apply the corruption dial to the **ungated** arms for the mechanism test. Treat the gated arms as
+  a separate gate-effect question, since the correctness gate removes corrupted outputs by construction.
+- The M1 anchor is optional. App. E.3 Table 10 already supplies the c ≈ 0 evidence, so a replication adds only
+  the ± prox check.
+- M1 becomes the backup if the instructor accepts a scope change or the KD budget smoke test fails.
+
+**Single strongest argument against S.** PCD's own KKT structure (μ = τ − c) makes it **increase** the weight on the
+KD direction exactly when a corrupted teacher conflicts with the labels, while the reliability gate removes the
+corrupted outputs before PCD ever sees them. So in the ungated arm theory predicts PCD is *worse* than a fixed or
+tuned weighted KD, and in the gated arm there is little conflict left for PCD to act on. S is therefore likely to
+deliver a predictable negative or null answer to "does PCD add value?". That is scientifically legitimate, but it
+means the course project's headline method is expected to lose to its own controls.
+
+### R2-C. Corrections to my own files in this round
+
+| # | File | Correction |
+|---|---|---|
+| C1 | `literature/notes/varam2026pcd.md` (critical reading #1) | Exact coefficient α = τ − aᵀb/‖b‖², w = α/(1+α), pre-rescale norm √(1+τ²−c²); added the App. E.3 Table 10 empirical confirmation; replaced "does not appear in the paper" with the narrowed missing control (low-weight, EMA-normalized, rescale-matched), citing App. E.2 and the App. E.4 small-λ raw rows. |
+| C2 | `research/notes/pcd-fedpcd-literature.md` §4 item 3 | Same narrowing; "[UNTESTED] … appears never to have been compared" replaced. |
+| C3 | `research/directions/candidates-claude.md` D2 | Same narrowing and exact form. |
+| C4 | `literature/sources.yaml`, `literature/notes/irshaid2026fedpcd.md`, `research/notes/pcd-fedpcd-literature.md`, `research/directions/candidates-claude.md`, this review §1.2 / §4 | Every "no code exists / no released code / none released" now reads "**not publicly released as of 2026-11-02**". |
+| C5 | `research/directions/candidates-claude.md` D5, synthesis §5 | "High scooping risk" withdrawn and replaced by "overlap risk" (project page lists QAT as an example application); GAQAT cited as `jiang2024gaqat`. |
+| C6 | `research/directions/candidates-claude.md` | Removed "any outcome is publishable" (table row) and "any outcome is informative" (recommendation). |
+| C7 | `literature/sources.yaml` | Registered `jiang2024gaqat` and `kang2025dho`; added `literature/notes/kang2025dho.md`. |
+| C8 | This review §4 | M1 rescored (b) 3 → 2, (c) 3 → 2, total 27 → 25 (see R2-A). S added at 25; ranking S ≈ M1 > M2 (24) > M3 (22) > M4 = M7 (20) > M6 (18) > M5 (15). Top-1 is now S (amended), backup M1. |
+
+### R2-D. Unresolved after two rounds (for `docs/reviews/`)
+
+1. Whether S (KD) or M1 (compression audit) should be top-1. Both total 25/35 under my scores. The tie-break is
+   criterion (g) and the instructor's stance on scope, which is outside the evidence. Codex's round-1 scores
+   rated D2 above D1 on its own scale.
+2. Whether a full-data CIFAR-100 CE–KD cosine is materially negative. No measurement exists in the sources I could
+   find; DHO's few-shot VLM numbers may not transfer.
+3. Throughput on the M4. Neither agent has measured it.
+4. Whether the PCD baselines also used the proximal step (round 1).

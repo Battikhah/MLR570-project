@@ -97,10 +97,22 @@ PCGrad, CAGrad, FAMO, Nash-MTL) treat the objectives as interchangeable, which t
 1. **PCD ≈ normalized weighted sum in the paper's own main regime.** For K = 2 with unit-normalized gradients and
    an active constraint, d̃* = g̃1 + (τ − c)g̃2 (Cor. 4.6 / Prop. 4.7). With c ≈ 0, as measured (≤ 1.2e-3), this is
    **g̃1 + τ g̃2, a normalized weighted sum with weight τ**, followed by a rescale to ‖g1‖.
-   VERIFIED (App. E.2, p. 37): the EMA-normalized baselines were run "over the same hyperparameter grid as the
-   original submission", i.e. w ∈ {0.1..0.9}. A normalized WS with weight in [0.01, 0.1], the range of PCD's best
-   τ, therefore does not appear in the paper (re-check against the Table 9 rows and code).
-   → **HYPOTHESIS:** a GradNorm-style normalized WS with λ = τ matches PCD on pruning. This is a decisive and cheap test.
+   **Exact form (corrected in round 2; agreeing with Codex's review):** in the active regime
+   d̃* = a + αb with α = τ − aᵀb/‖b‖² (a = g̃1, b = g̃2). So α ≈ τ only when ‖b‖ ≈ 1 and c ≈ 0. In simplex
+   form (1−w)a + wb the weight is w = α/(1+α), not α. Before the rescale, ‖d̃*‖ = √(1+τ²−c²) for unit a, b, so a
+   normalized WS without PCD's rescale steps √(1+τ²) larger at c = 0.
+   **Empirical confirmation [EE, App. E.3 Table 10, p. 44]:** direction deviation ‖d*−g1‖/‖g1‖ = 0.0168 / 0.0510 /
+   0.1067 / 0.2187 at τ = 0.01 / 0.05 / 0.10 / 0.20, and CE efficiency cos(d*, g1) = 1.000 / 0.999 / 0.994 / 0.976,
+   against the predicted 1/√(1+τ²) = 1.000 / 0.999 / 0.995 / 0.981. The constraint is active on 100% of steps, and
+   the conflict frequency is 0.41–0.47 with severity about 1e-5. The authors write: "There is little conflict to
+   resolve".
+   **What is actually missing (narrowed in round 2):**
+   - Normalization has been tested: App. E.2 ran EMA-normalized baselines on w ∈ {0.1, 0.2, 0.4, 0.6, 0.8, 1}.
+   - Tuned *raw* scalarization at small coefficients is in App. E.4 Table 11 (λ_eff = 1e-4 … 1e-2). For example
+     λ = 3e-4 gives 72.71% at 77.77% sparsity, vs PCD τ = 0.01 at 73.03% / 77.26%, i.e. within noise.
+   - The untested control is narrowly the **low-weight, EMA-normalized, rescale-matched** scalarization at PCD's
+     effective coefficient, under an equal tuning budget.
+   → **HYPOTHESIS:** that control matches PCD on pruning. Given Table 10, this is largely predictable [TG + EE].
 2. The projection's distinctive regimes (inactive vs. active-with-conflict) matter only when c varies in sign or
    magnitude across steps. Problems with real, varying gradient conflict are where PCD can differ from normalized WS.
 3. Every guarantee is per-step and directional. None of them covers generalization or final accuracy.

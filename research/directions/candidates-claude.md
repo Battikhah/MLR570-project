@@ -19,10 +19,10 @@ outcome (5 = low risk).
 | # | Direction | Fit | Novelty | Feas. | Risk | Notes |
 |---|---|---|---|---|---|---|
 | D1 | Current proposal: reliability-gated PCD-KD (CIFAR-100) | 2 | 2 | 2 | 2 | crowded; theory mismatch; large run matrix |
-| D2 | "Projection or normalization?": independent replication + mechanism audit of PCD | 5 | 4 | 4 | 5 | any outcome is publishable as a finding |
-| D3 | FedPCD audit/extension: drift controls, local epochs, fair search | 4 | 4 | 4 | 4 | no code: must re-implement |
+| D2 | "Projection or normalization?": independent replication + mechanism audit of PCD | 5 | 4 | 4 | 5 | narrow audit; outcome largely predictable from App. E.3 Table 10 (round 2) |
+| D3 | FedPCD audit/extension: drift controls, local epochs, fair search | 4 | 4 | 4 | 4 | code not publicly released as of 2026-11-02: must re-implement |
 | D4 | Centralized priority-constrained group robustness/fairness ("groups as clients") | 3 | 4 | 4 | 3 | dataset choice constrained by size |
-| D5 | PCD for quantization-aware training | 3 | 3 | 3 | 3 | scooping risk from the PCD authors |
+| D5 | PCD for quantization-aware training | 3 | 3 | 3 | 3 | overlap with an application listed on the PCD project page; GAQAT is prior gradient-conflict QAT |
 | D6 | PCD for continual learning (normalized-margin GEM) | 3 | 1 | 5 | 3 | prior art ≈ identical |
 | D7 | PCD for accuracy–robustness (adversarial) training | 1 | 3 | 2 | 2 | outside theory; PGD cost |
 
@@ -75,11 +75,11 @@ outcome (5 = low risk).
 
 - **Problem.** PCD's headline gains are in structured pruning. There the authors measure cos(task, reg) ≤ 1.2e-3
   and attribute the gain to "objective scale rather than gradient conflict" [EMPIRICAL, VERIFIED].
-  - With c ≈ 0 and an active constraint, the K = 2 closed form gives d̃* = g̃1 + τ g̃2 (INTERPRETATION from
-    Cor. 4.6 / Prop. 4.7). That is an **EMA-normalized weighted sum with weight τ**, rescaled to ‖g1‖.
-  - The paper's normalized-baseline appendix (E.2) used w ∈ {0.1..0.9}, i.e. λ_eff ≥ 0.111, so the matching
-    λ ∈ [0.01, 0.09] control appears untested (VERIFIED wording, "same hyperparameter grid as the original
-    submission").
+  - With an active constraint, the K = 2 closed form gives d̃* = g̃1 + αg̃2 with α = τ − g̃1ᵀg̃2/‖g̃2‖²
+    (Cor. 4.6). For unit norms and c ≈ 0, α ≈ τ (simplex weight w = α/(1+α); pre-rescale norm √(1+τ²)).
+  - App. E.3 Table 10 already confirms this empirically (CE efficiency ≈ 1/√(1+τ²)).
+  - Round-2 correction: the paper tested EMA-normalized baselines at w ≥ 0.1 (App. E.2) and tuned raw small-λ
+    scalarization (App. E.4). Only the **low-weight, EMA-normalized, rescale-matched** control is untested.
   - Question: **does PCD's advantage come from the projection or from normalization?** And in which regimes
     (strong or varying conflict, K = 3) does the projection matter?
 - **Theoretical fit.** Highest. Convex secondaries (group lasso, ℓ1, nuclear norm) are exactly Assumption 3.1. The
@@ -125,7 +125,7 @@ outcome (5 = low risk).
   - No FedProx/SCAFFOLD/FedNova controls.
   - A larger hyperparameter grid for FedPCD than for the baselines.
   - No validation split described.
-  - Code not released.
+  - Code not publicly released (as of 2026-11-02).
   - Its theory needs an assumed uniform alignment margin γ_eff > 0 that local drift erodes.
 
   Questions:
@@ -190,9 +190,10 @@ outcome (5 = low risk).
 - **Theoretical fit.** Partial. Distance-to-grid is non-convex (periodic) and nonsmooth at grid midpoints, so it is
   outside Assumption 3.1. It is regularizer-like, though, and joint stationarity is plausible.
 - **Closest prior work / novelty.** No PCD-QAT paper was found. Gradient-conflict QAT work exists in other forms
-  (GAQAT, CAGE; search results only, not registered/verified). **High scooping risk:** the PCD authors have a
-  quantization survey (`Abushahla et al. 2025`, arXiv 2508.15008, cited in PCD) and publicly list quantization as a
-  next direction (search snippet).
+  (GAQAT `jiang2024gaqat`, VERIFIED round 2; CAGE still unverified).
+  - **Overlap risk (corrected in round 2):** the PCD project page lists QAT as an example application, and the
+    authors have a quantization survey (arXiv 2508.15008). That establishes overlap, not an active competing
+    project. My earlier "high scooping risk" was unsupported and is withdrawn.
 - **Contradicting evidence.** Straight-through-estimator QAT baselines are strong and simple. Not checked in this pass.
 - **Benchmarks.** CIFAR-10 with small CNNs/ResNets.
 - **Feasibility.** Medium: QAT implementation details (fake-quant, bit-width schedules) add engineering risk.
@@ -231,17 +232,18 @@ outcome (5 = low risk).
 
 1. **Primary pick: D2**, optionally with a reduced D1 or a D4 application as the "transfer" experiment.
    - It has the strongest theoretical fit, a sharp and falsifiable question, and public author code.
-   - It is cheap at K = 2, and any outcome is informative.
+   - It is cheap at K = 2. (Round 2: the outcome is largely predictable from App. E.3 Table 10, which lowers its value.)
    - It also strengthens the survey's critical-analysis section.
 2. **Strong alternative: D3** if the team wants the federated angle.
    - Its novelty is high relative to a one-month-old preprint, and there are clear, verifiable gaps.
-   - It needs a QP solver for many constraints and a full re-implementation, because no code exists.
+   - It needs a QP solver for many constraints and a full re-implementation, because the code is not publicly
+     released (as of 2026-11-02).
 3. **D1 as currently scoped is not recommended as the headline.**
    - The literature is crowded: SCOPE, TPKD and SCKD already give classification priority over KD.
    - The KD secondary falls in PCD's no-fixed-point / possible-primary-ascent regime.
    - The run matrix is too large for an M4 in one semester.
 4. Avoid D6 (prior art is essentially identical) and D7 (outside theory, expensive). D5 only if the team accepts
-   the scooping risk.
+   the overlap risk.
 
 Whatever is chosen, include:
 - a tuned scalarization at equal search budget;
@@ -253,5 +255,5 @@ Whatever is chosen, include:
 
 **Revision (cross-review round 1, 2026-11-02).** The merged scoring in `docs/reviews/phase4-claude-reviews-codex.md` §4
 keeps D2 (merged as M1) as top-1. It changes the **backup from D3 to a reduced D1** (KD with the λ = τ
-normalized-WS control). The reasons are that FedPCD has no released code (project-page Code link is empty, "Coming
+normalized-WS control). The reasons are that FedPCD code is not publicly released as of 2026-11-02 (project-page Code link is empty, "Coming
 soon") and that D1 fits the submitted MLR570 proposal. D3 is now third.

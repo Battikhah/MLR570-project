@@ -10,7 +10,7 @@ Read 2026-11-02 by the Claude literature worker. Source: arXiv 2610.13508v1 PDF 
   (venue not named). (Corrected in the cross-review, 2026-11-02.)
 - Project page daravaram.github.io/FedPCD links the arXiv paper. Its "Code" button is wired in `js/main.js` as
   `code: ""` with the comment `// code release, e.g. "https://github.com/DaraVaram/fedpcd"`, and shows "Coming soon".
-  The repo README says "Code is empty until the code is public". **No FedPCD code is released (VERIFIED 2026-11-02).**
+  The repo README says "Code is empty until the code is public". **FedPCD code is not publicly released as of 2026-11-02 (VERIFIED).**
 - The survey draft mentions "FedPCD" at L195 without a citation; this record supplies it.
 - Name collisions: unrelated GitHub repos `LiFan0304/FedPCD` and `StandWolf/FedPCD` ("Prototype-Cross Distillation
   for Multimodal Federated Learning") are not this work.
@@ -79,7 +79,7 @@ Read 2026-11-02 by the Claude literature worker. Source: arXiv 2610.13508v1 PDF 
 3. Many local epochs (high drift) are untested. The authors state this limitation (Sec. 6).
 4. Not compatible with secure aggregation: the server must see individual client pseudo-gradients (authors' limitation).
 5. Low absolute CIFAR-100 accuracy (~9–36%) means conclusions may not transfer to well-tuned FL regimes.
-6. There is no code, so independent replication is required before any claim is reused.
+6. The code is not publicly released (as of 2026-11-02), so independent replication is required before any claim is reused.
 
 ## Datasets / benchmarks used
 

@@ -18,7 +18,7 @@ evidence, **[UNTESTED]** hypothesis nobody has tested.
 | Status | **Published, TMLR, Sept 2026** (VERIFIED: TMLR list + bib, arXiv journal_ref, PDF header) | **arXiv preprint**, v1 2026-10-09; no venue found (VERIFIED: arXiv) |
 | arXiv | 2606.29521 (v1 2026-06-28, v2 2026-09-21) | 2610.13508 (v1) |
 | OpenReview | forum HT01yGHLEt (listed by TMLR; page itself blocked by a bot challenge) | none found |
-| Code | github.com/DaraVaram/priority-constrained-descent (MIT; author-linked by README and project page; **not linked from the paper PDF**). Static audit in literature/notes/varam2026pcd.md: a rewrite of the research code, PCD only (no baselines), no physical-pruning export, published runs used an undisclosed proximal step. | **none released**: project-page Code button is `code: ""`, "Coming soon" (VERIFIED in the cross-review) |
+| Code | github.com/DaraVaram/priority-constrained-descent (MIT; author-linked by README and project page; **not linked from the paper PDF**). Static audit in literature/notes/varam2026pcd.md: a rewrite of the research code, PCD only (no baselines), no physical-pruning export, published runs used an undisclosed proximal step. | **not publicly released as of 2026-11-02**: project-page Code button is `code: ""`, "Coming soon" (VERIFIED in the cross-review) |
 
 VERIFIED corrections to the survey draft:
 - The PCD TMLR status (draft L185, "not directly verified") is now verified.
@@ -144,9 +144,12 @@ component". This is close to PCD-KD at τ = 0 or small τ.
    44 wins, 4 losses, 54 within noise. The dramatic Sec. 5.1.1 gaps rest on a WS grid the authors themselves say is
    2–4 orders of magnitude off.
 3. **Mechanism is scale, not conflict [EMPIRICAL, VERIFIED Sec. 5.1.1].** In pruning, cos(task, reg) ≤ 1.2e-3 and the
-   gain is attributed to normalization. INTERPRETATION: with c ≈ 0 and an active constraint, d̃* = g̃1 + τg̃2, which is
-   a normalized weighted sum. **[UNTESTED]** the paper's normalized-baseline appendix (E.2) uses w ≥ 0.1, so a
-   normalized WS at PCD's τ range (0.01–0.09) appears never to have been compared.
+   gain is attributed to normalization. INTERPRETATION: with an active constraint, d̃* = g̃1 + αg̃2 with
+   α = τ − g̃1ᵀg̃2/‖g̃2‖² (≈ τ for unit norms and c ≈ 0), i.e. a normalized weighted sum (simplex weight
+   w = α/(1+α)).
+   - [EE] App. E.3 Table 10 confirms this: CE efficiency 0.976 at τ = 0.2 vs the predicted 1/√(1+τ²) = 0.981.
+   - Round-2 correction: normalization (App. E.2, w ≥ 0.1) and tuned raw small-λ scalarization (App. E.4) were
+     both tested. Only the low-weight, EMA-normalized, rescale-matched control is untested [UNTESTED].
 4. **Primary can be sacrificed [THEORY, Prop. 4.7]** under strong conflict, which is exactly the "unreliable
    teacher" regime the KD proposal targets.
 5. **Realized steps differ from the guaranteed direction [EMPIRICAL, App. G].** Under SGD+momentum, the sign of
@@ -187,9 +190,10 @@ scale differs strongly from or drifts relative to L1's.
 
 Novelty searches run on 2026-11-02 (web search, arXiv API "priority-constrained", GitHub): I found no published
 application of PCD to KD, fairness, robustness, continual learning or quantization. The only PCD-derived work found
-was FedPCD. The authors' public posts (search-result snippet, unverified) name FL, continual learning, generative
-modeling and quantization as planned directions, so **QAT and continual learning carry a high scooping risk from
-the original group.**
+was FedPCD. The PCD project page (daravaram.github.io/PCD, VERIFIED round 2) lists quantization-aware training and
+federated/personalized learning as example applications. That establishes **overlap risk** with the original group.
+It is not evidence of an active competing project, so I withdraw my earlier "high scooping risk" (round-2
+correction). Gradient-conflict QAT also already exists (GAQAT, `jiang2024gaqat`).
 
 ## 6. What I could not verify
 
@@ -198,7 +202,7 @@ the original group.**
   (the code README says the PCD runs did; the paper is silent).
 - The OpenReview forum HT01yGHLEt (reviews, decision text, camera-ready supplementary). Every OpenReview request
   returned a bot challenge (HTTP 403).
-- FedPCD venue and submission status (only arXiv v1 found). No FedPCD code.
+- FedPCD venue (README says "under review"; venue not named). FedPCD code: not publicly released as of 2026-11-02.
 - Whether the PCD GitHub code matches the paper (delegated to Codex). GitHub profile DaraVaram lists EPFL while the
   paper lists AUS/MIT; provenance rests on the README → arXiv link and the shared github.io project page.
 - Venues for FAMO, FedNova, AFL, Chamon & Ribeiro, Cotter et al., Agarwal et al., OGD, GroupDRO, random weighting,
