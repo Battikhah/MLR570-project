@@ -1,10 +1,10 @@
 """Per-objective EMA gradient normalization (PCD Def. 4.5).
 
-    v_t = beta v_{t-1} + (1 - beta) ||g_t||^2,   v_hat_t = v_t / (1 - beta^t),   s_t = 1 /
-    sqrt(v_hat_t + eps)
+    v_t = beta v_{t-1} + (1 - beta) ||g_t||^2
+    v_hat_t = v_t / (1 - beta^t),   s_t = 1 / sqrt(v_hat_t + eps)
 
-One scalar state per objective name, each with its own step counter. Arithmetic is done in Python
-float64 (only ||g||^2 is read from the device), so it works on MPS.
+One scalar state per objective name, each with its own step counter. Arithmetic is done in
+Python float64 (only ||g||^2 is read from the device), so it works on MPS.
 """
 
 from __future__ import annotations

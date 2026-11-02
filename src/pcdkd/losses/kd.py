@@ -2,12 +2,10 @@
 
     L_KD = T^2 * KL(p_T^T || p_S^T),   p^T = softmax(z / T)
 
-``teacher_probs`` are the teacher's probabilities at temperature 1 (the same tensor the reliability
-gate
-and the corruption map operate on). They are softened here as ``softmax(log p / T)``, which equals
-``softmax(z / T)`` whenever ``p = softmax(z)``. Pass ``pretempered=True`` if the caller has already
-applied
-the temperature.
+``teacher_probs`` are the teacher's probabilities at temperature 1 (the same tensor the
+reliability gate and the corruption map operate on). They are softened here as
+``softmax(log p / T)``, which equals ``softmax(z / T)`` whenever ``p = softmax(z)``.
+Pass ``pretempered=True`` if the caller has already applied the temperature.
 """
 
 from __future__ import annotations
@@ -42,18 +40,16 @@ def kd_loss(
 
     Args:
         student_logits: (B, C) raw student logits.
-        teacher_probs: (B, C) teacher probabilities at T = 1 (or at T if ``pretempered``); treated
-        as
-            constants (detached).
+        teacher_probs: (B, C) teacher probabilities at T = 1 (or at T if ``pretempered``);
+            treated as constants (detached).
         T: distillation temperature (> 0).
         mask: optional (B,) bool tensor; only True rows contribute.
         reduction: "mean" (over masked-in rows), "sum", or "none" (per-row, masked-out rows = 0).
         pretempered: ``teacher_probs`` already carry the temperature.
 
-    Returns a scalar (or (B,) for "none"). If ``mask`` selects no rows the result is an exact zero
-    that is
-    still connected to ``student_logits`` (its gradient is zero), so ``backward``/``autograd.grad``
-    work.
+    Returns a scalar (or (B,) for "none"). If ``mask`` selects no rows the result is an exact
+    zero that is still connected to ``student_logits`` (its gradient is zero), so
+    ``backward``/``autograd.grad`` work.
     """
     if reduction not in _REDUCTIONS:
         raise ValueError(f"reduction must be one of {_REDUCTIONS}, got {reduction!r}")

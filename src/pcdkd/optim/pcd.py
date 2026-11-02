@@ -2,17 +2,16 @@
 
     d~ = argmin_d 1/2 ||d - g~_1||^2   s.t.   g~_j^T d >= tau ||g~_j||^2,  j = 2..K
 
-By KKT (PCD Thm. 4.2) d~ = g~_1 + sum_j mu_j g~_j with mu_j >= 0, so the QP is solved on the K x K
-Gram
-matrix (float64, CPU, NumPy) and the direction is formed on the gradients' own device/dtype.
+By KKT (PCD Thm. 4.2) d~ = g~_1 + sum_j mu_j g~_j with mu_j >= 0, so the QP is solved on the
+K x K Gram matrix (float64, CPU, NumPy) and the direction is formed on the gradients' own
+device and dtype.
 
 * K = 2: closed form (PCD Cor. 4.6).
-* 3 <= K <= 4: KKT working-set enumeration in order of increasing size (PCD App. B.2). This follows
-the
-  algorithm of the official ``pcd/qp.py`` (MIT, DaraVaram/priority-constrained-descent @ e9afdbc),
-  with the
-  same tolerances, and is cross-checked against it in ``tests/unit/test_pcd.py``.
-* Infeasible constraint set (only possible for K >= 3): fall back to g~_1 (PCD Alg. 1, line 14).
+* 3 <= K <= 4: KKT working-set enumeration in order of increasing size (PCD App. B.2). This
+  follows the algorithm of the official ``pcd/qp.py`` (MIT,
+  DaraVaram/priority-constrained-descent @ e9afdbc) with the same tolerances, and is
+  cross-checked against it in ``tests/unit/test_pcd.py``.
+* Infeasible constraint set (only possible for K >= 3): fall back to g~_1 (PCD Alg. 1, l. 14).
 * Zero secondaries (||g~_j|| = 0, constraint 0 >= 0) are skipped.
 """
 
@@ -112,10 +111,10 @@ def solve_pcd_qp(
 ) -> tuple[torch.Tensor, dict]:
     """Solve the PCD QP for normalized 1-D gradients (primary first).
 
-    Returns ``(d_tilde, info)`` with info keys: ``weights`` (list, K, weights[0] == 1), ``mu`` (K-1
-    multipliers), ``active`` (tuple of 1-based secondary indices whose constraint binds),
-    ``feasible``,
-    ``gram`` (K x K nested list), ``method`` ("trivial" | "closed_form" | "kkt").
+    Returns ``(d_tilde, info)`` with info keys: ``weights`` (list of K, weights[0] == 1),
+    ``mu`` (K-1 multipliers), ``active`` (tuple of 1-based secondary indices whose constraint
+    binds), ``feasible``, ``gram`` (K x K nested list) and ``method``
+    ("trivial" | "closed_form" | "kkt").
     """
     vecs = list(G_normalized_list)
     K = len(vecs)

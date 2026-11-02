@@ -1,11 +1,11 @@
 """Running aggregation of combiner ``info`` dicts into JSON-serialisable summaries.
 
 Numeric keys get count/mean/std/min/max (Welford, float64); bool keys get the fraction of True;
-``cos_raw`` and ``cos_norm`` also get fixed-edge histograms on [-1, 1] (values outside are counted
-in
-``below``/``above``); ``prop47_margin`` also gets the fraction of steps with a non-positive margin.
-``None`` values (not applicable for that method) and non-finite values are skipped; the number of
-non-finite values is reported per key. Strings, lists and dicts are ignored.
+``cos_raw`` and ``cos_norm`` also get fixed-edge histograms on [-1, 1] (values outside are
+counted in ``below``/``above``); ``prop47_margin`` also gets the fraction of steps with a
+non-positive margin. ``None`` values (not applicable for that method) are skipped and
+non-finite values are counted per key but excluded from the statistics. Strings, lists and
+dicts are ignored.
 """
 
 from __future__ import annotations

@@ -10,8 +10,7 @@ import torch
 def flat_grad(
     loss: torch.Tensor, params: Sequence[torch.Tensor], retain_graph: bool
 ) -> torch.Tensor:
-    """Gradient of ``loss`` w.r.t. ``params`` as one 1-D tensor (parameters unused by the loss give
-    0).
+    """Gradient of ``loss`` w.r.t. ``params`` as one 1-D tensor (unused parameters give 0).
 
     If ``loss`` does not require grad (e.g. a constant), the zero vector is returned.
     """
@@ -31,8 +30,7 @@ def flat_grad(
 
 @torch.no_grad()
 def unflatten_to(params: Sequence[torch.Tensor], vec: torch.Tensor) -> None:
-    """Write consecutive slices of ``vec`` into ``p.grad`` for each parameter (overwrites
-    ``.grad``)."""
+    """Write consecutive slices of ``vec`` into each ``p.grad`` (overwrites ``.grad``)."""
     params = list(params)
     total = sum(p.numel() for p in params)
     if vec.dim() != 1 or vec.numel() != total:

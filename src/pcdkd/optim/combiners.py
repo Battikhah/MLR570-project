@@ -4,36 +4,34 @@ Every combiner takes ``grads: dict[str, Tensor]`` of *raw* flattened gradients (
 :func:`pcdkd.optim.grads.flat_grad`) and returns ``(direction, info)``; write the direction into
 ``.grad`` with :func:`pcdkd.optim.grads.unflatten_to` and call any optimizer.
 
-Combiners (``g1`` = primary/CE gradient, ``g2`` = secondary/KD gradient, ``g~i = s_i g_i``
-EMA-normalized):
+Notation: g1 = primary (CE) gradient, g2 = secondary (KD) gradient, g~i = s_i g_i (EMA-normalized).
 
-* ``WeightedSum(lam)``:            d = (1 - lam) g1 + lam g2                          (raw Hinton
-KD)
-* ``NormalizedWeightedSum(lam)``:  d~ = g~1 + lam g~2, rescaled to ||g1||             (NWKD)
-* ``PCGrad(lam=1)``:               d = g1 + lam g2', g2' = g2 minus its g1-component if g1^T g2 < 0
-                                   (one-sided "protect the primary" variant, raw gradients)
-* ``PCD(tau)``:                    d~ = PCD QP solution (Cor. 4.6 / KKT), rescaled to ||g1|| (Alg.
-1)
-* ``AdaptiveLambda(tau)``:         NWKD with lam_t = max(0, tau - g~1^T g~2 / ||g~2||^2) (Cor. 4.6
-                                   coefficient computed independently of the QP; must equal PCD for
-                                   K=2)
+* ``WeightedSum(lam)``: d = (1 - lam) g1 + lam g2 (raw Hinton KD).
+* ``NormalizedWeightedSum(lam)``: d~ = g~1 + lam g~2, rescaled to ||g1|| (NWKD).
+* ``PCGrad(lam=1)``: d = g1 + lam g2', where g2' is g2 minus its g1-component if g1^T g2 < 0
+  (one-sided "protect the primary" variant on raw gradients).
+* ``PCD(tau)``: d~ = PCD QP solution (Cor. 4.6 / KKT), rescaled to ||g1|| (Alg. 1).
+* ``AdaptiveLambda(tau)``: NWKD with lam_t = max(0, tau - g~1^T g~2 / ||g~2||^2), the Cor. 4.6
+  coefficient computed independently of the QP; must equal PCD for K = 2.
 
 Every combiner updates its own EMA normalizer on every call (also those whose direction ignores
-it), so
-``cos_norm`` and the scales are logged identically for all arms.
+it), so ``cos_norm`` and the scales are logged identically for all arms.
 
 ``info`` keys (all JSON-serialisable; secondary-specific scalars refer to the first secondary):
-    method, step, cos_raw (cosine of raw g1, g2), cos_norm (g~1^T g~2, the c of PCD Prop. 4.7;
-    equals the
-    cosine only in EMA steady state), active (the method's conditional branch fired: PCD constraint
-    binding / PCGrad projection applied / AdaptiveLambda lam_t > 0; always False for the weighted
-    sums),
-    feasible, lambda_eff (secondary/primary coefficient in the space the method combines: raw for
-    WeightedSum and PCGrad, normalized otherwise), lambda_raw (the same ratio in raw-gradient
-    space),
-    prop47_margin (1 + tau c - c^2 with c = cos_raw, PCD Prop. 4.7 under the unit-norm idealization;
-    None for methods without tau), norm_primary, norm_secondary, norm_direction, scale_primary,
-    scale_secondary, align_primary (cos(g1, d)), align_secondary (cos(g2, d)), zero_primary, tau.
+
+* method, step, primary, secondaries
+* cos_raw: cosine of raw g1, g2
+* cos_norm: g~1^T g~2, the c of PCD Prop. 4.7 (equals the cosine only in EMA steady state)
+* active: the method's conditional branch fired (PCD constraint binding / PCGrad projection
+  applied / AdaptiveLambda lam_t > 0); always False for the weighted sums
+* feasible: False only for an infeasible PCD QP (fallback to the primary)
+* lambda_eff: secondary/primary coefficient in the space the method combines (raw for
+  WeightedSum and PCGrad, normalized otherwise); lambda_raw: the same ratio in raw space
+* prop47_margin: 1 + tau c - c^2 with c = cos_raw (PCD Prop. 4.7 under the unit-norm
+  idealization); None for methods without tau
+* norm_primary, norm_secondary, norm_direction, scale_primary, scale_secondary
+* align_primary = cos(g1, d), align_secondary = cos(g2, d), zero_primary, tau
+* PCD only: mu, active_set, cos_raw_all, norm_secondary_all
 """
 
 from __future__ import annotations
