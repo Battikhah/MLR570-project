@@ -19,6 +19,8 @@
 
 ## Literature landscape
 
+Summary: state-of-the-art KD gains come mainly from loss and target design (DKD, MLKD, LSKD, RLD). PCD belongs to the smaller optimizer-side family (DTO-KD, DOT, MEMA, AE-KD; CA-AT outside KD), where DTO-KD's symmetric min-norm rule is the direct counterpart to PCD's fixed priority. Measured CE–KD conflict exists only in DHO's few-shot VLM setting, and no measurement exists for standard CIFAR-100 KD.
+
 ### L0. Where PCD sits
 PCD is an **optimizer-side combiner**. Given the gradients of the primary and the secondaries, it returns one update direction:
 - EMA normalisation of each gradient;
@@ -216,3 +218,10 @@ Novelty verdict for the selected idea I1\*: **PROCEED WITH CAUTION** (both revie
 - **Adopt I1\* as the sole confirmatory study:** *priority vs symmetry in KD gradient combination*. PCD(CE | KD) vs DTO-KD vs DOT vs a tuned normalised weighted sum, with KD and one loss-side plug-in (KD+LS, PCD on top), on CIFAR-100 ResNet32x4 → ResNet8x4 with 10 seeds. This answers "how does PCD compare with state-of-the-art KD" where the comparison is meaningful (the optimizer family), and produces the missing conflict measurements.
 - **Keep I4 as a pre-specified follow-up.** It is a priority-order ablation under corrupted teachers, run only if the I1\* pilot shows a non-trivial active rate.
 - **Future work in the survey:** I1-K3, I3, I2 and I5.
+
+<!-- ARIS_IDEA_DISCOVERY_EVIDENCE_GATE:START -->
+## Evidence Gate
+**Status:** PASS
+
+All required stage records, review receipts, artifacts, and report sections are present.
+<!-- ARIS_IDEA_DISCOVERY_EVIDENCE_GATE:END -->
