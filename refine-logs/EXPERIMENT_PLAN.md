@@ -1,6 +1,6 @@
 # EXPERIMENT PLAN rev. 2 — Priority vs symmetry in KD gradient combination (I1*)
 
-Status: **DRAFT, revised after Codex review cycle 1** (`docs/reviews/phase7-codex-reviews-claude.md`).
+Status: **DRAFT rev. 2 + cycle-2 disposition (Codex cycle 2: 7/10, PROCEED)**; reviews (`docs/reviews/phase7-codex-reviews-claude.md`).
 - Nothing runs until approved: ⛔ the CIFAR-100 download on the GPU server, ⛔ the mdistiller teacher checkpoint, ⛔ every GPU run.
 - GPU-hours are **ESTIMATES** until the pilot measures them.
 - [PIN] items must be fixed to a commit SHA or config value before the plan is frozen. The frozen plan's commit hash is recorded before the first confirmatory run.

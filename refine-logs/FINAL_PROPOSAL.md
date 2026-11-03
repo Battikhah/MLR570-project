@@ -1,4 +1,4 @@
-# FINAL PROPOSAL rev. 2 (pending cycle-2 review): Priority vs symmetry in knowledge distillation
+# FINAL PROPOSAL rev. 2: Priority vs symmetry in knowledge distillation (Codex cycle 2: 7/10, PROCEED)
 
 **Working title:** *Should the label come first? Priority-constrained descent versus symmetric trade-off optimisation in knowledge distillation.*
 
