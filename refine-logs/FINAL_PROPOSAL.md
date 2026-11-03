@@ -5,7 +5,7 @@
 ## Problem
 - KD trains a student on a task loss (CE) and a distillation loss whose gradients can differ in scale and direction.
 - **The optimizer-side state of the art treats the two symmetrically:**
-  - **DTO-KD** (ICLR 2026): min-norm weighting of log-loss gradients that equalises progress on both.
+  - **DTO-KD** (ICLR 2026): min-norm weighting of log-loss gradients with equal first-order contribution to both (Cor. 3.3).
   - **DOT** (ICCV 2023): a separate, larger momentum for the KD gradient.
 - **PCD** (TMLR 2026) argues that objectives are not equal. It keeps a fixed primary and guarantees each secondary only τ-progress. It has never been tested on KD.
 - No study reports how much CE and KD actually conflict per step on the standard CIFAR-100 benchmark.
@@ -19,7 +19,7 @@ On an identical CIFAR-100 protocol (ResNet32x4 → ResNet8x4), does a fixed-prio
 How often do these rules actually produce different update directions?
 
 ## Contributions (conditional on results; no improvement is claimed in advance)
-1. A controlled comparison of combination rules on one loss, teacher, schedule and data order, with 10 paired seeds, a Holm-corrected confirmatory family, and preregistered equivalence margins.
+1. A controlled comparison of combination rules on one loss, teacher, schedule and data order, with 10 paired seeds, a Holm-corrected confirmatory family, and a preregistered equivalence margin as a secondary analysis.
 2. The first per-step measurements, on this benchmark, of CE–KD conflict, PCD's active rate, DTO-KD's weights, and the shadow-direction agreement between rules.
 3. A theory-derived prediction, H0′, tested explicitly: with CE primary and small τ, PCD reduces toward CE-only training (PCD Cor. 4.3).
 4. Exploratory: PCD as a plug-in on a loss-side method (LS).
@@ -36,5 +36,5 @@ How often do these rules actually produce different update directions?
 
 ## Budget
 - A pilot of about 8–14 GPU-h.
-- About 120–235 GPU-h in total (ESTIMATE, `EXPERIMENT_PLAN.md` §4).
+- About 120–240 GPU-h in total (ESTIMATE, `EXPERIMENT_PLAN.md` §4).
 - Every download and GPU run requires approval.

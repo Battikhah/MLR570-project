@@ -58,11 +58,11 @@ On ImageNet with ResNet34 → ResNet18: KD 71.03, DKD 71.70, KD+DOT 71.72 (VERIF
 - **DTO-KD** (Hayder, Cheraghian, Petersson, Harandi, Hartley; **ICLR 2026**; VERIFIED full PDF; no code link).
   - The closest prior work. KD is framed as a two-objective problem against "gradient conflict" and "gradient dominance".
   - Following FAMO (Liu et al. 2023), the update is g* = π₁∇log L_distill + π₂∇log L_task, with π the **min-norm point on the simplex**. Closed form (Eqs. 11–12): π₁* = (g₂₂ − g₁₂)/(g₁₁ + g₂₂ − 2g₁₂), where g is the Gram matrix of the log-loss gradients.
-  - Properties: g* aligns with both objectives (Cor. 3.2) and **contributes equally to both** (Cor. 3.3). It is symmetric MGDA-style balancing. Scale handling comes from the log-loss (each gradient divided by its loss value).
+  - Properties: g* aligns with both objectives (Cor. 3.2) and has **equal inner products with both log-loss gradients** (Cor. 3.3: equal first-order contribution, not equal finite-step loss reduction). It is symmetric MGDA-style balancing. Scale handling comes from the log-loss (each gradient divided by its loss value).
   - An amortised variant (Eq. 18) updates π without a second backward pass.
   - Results: CIFAR-100 ResNet32x4 → ResNet8x4 76.40 (Table 2), plus DeiT/ImageNet and ViDT/COCO.
   - Reimplementable from Eqs. 11–12 and Alg. 1.
-  - **Relation:** DTO-KD is the symmetric counterpart of PCD. PCD pins the primary coefficient at 1 and guarantees only τ-progress on the secondary; DTO-KD equalises progress. *Priority vs symmetry* in KD is the open, testable question (the PCD paper's "symmetry problem", now with a published KD instance).
+  - **Relation:** DTO-KD is the symmetric counterpart of PCD. PCD pins the primary coefficient at 1 and guarantees only τ-progress on the secondary; DTO-KD equalises first-order contribution on the log-losses. *Priority vs symmetry* in KD is the open, testable question (the PCD paper's "symmetry problem", now with a published KD instance).
   - Lineage: MoKD (withdrawn 2025-08-02, "major changes to the paper and the authorship") has the same first four authors. INTERPRETATION: DTO-KD supersedes it.
 - **DOT** (Zhao, Cui, Song, Liang; ICCV 2023; arXiv 2307.08436; VERIFIED abs).
   - It identifies a trade-off: adding the distillation loss slows the task loss.
@@ -196,12 +196,21 @@ Novelty verdict for the selected idea I1\*: **PROCEED WITH CAUTION** (both revie
 | 2 | Make I1 the sole confirmatory study on P1 with a small arm set | **AGREE** | `EXPERIMENT_PLAN.md` rev. 2: P1 only; 6 arms; K=3, other pairs and I4 exploratory or follow-up. |
 | 3 | I4 wording: batch alignment, not teacher–label contradiction or per-example trust | **AGREE** | I4 rewritten above; claim downgraded to a priority-order ablation. |
 | 4 | Executable controls and equal tuning budget; pin commits; verify α, the P3 learning rate, DOT δ; fix the run arithmetic | **AGREE** | Plan rev. 2 §2–§4. DOT `DELTA 0.075` taken from the official config (Codex-verified); P3 is dropped from the confirmatory design. DKD α and commit SHAs remain [PIN] items before freezing. Arithmetic is shown row by row. |
-| 5 | Five seeds can't establish equivalence; predefine endpoints, margins, families | **AGREE** | 10 paired seeds for the confirmatory contrasts; one primary endpoint; a Holm family of 3; equivalence is claimed only if the 95% CI lies inside ±δ, and otherwise the result is reported as inconclusive. |
+| 5 | Five seeds can't establish equivalence; predefine endpoints, margins, families | **AGREE** | 10 paired seeds for the confirmatory contrasts; one primary endpoint; a Holm family of 3; equivalence is a secondary analysis claimed only if the 90% TOST interval (α = 0.05 per side) lies inside ±δ = 0.5. There is no pilot-variance gate (cycle-2 disposition). |
 | 6 | Reduce scope and GPU budget; get approval | **AGREE** | About 125 GPU-h confirmatory (ESTIMATE) after a 6 GPU-h pilot; approval still required. |
 | — | `du2020aekd` described as "VERIFIED" in the report while its record says unverified | **AGREE** | Report wording corrected. |
 | — | H2's "≥95% active ⇒ equivalence" reasoning | **AGREE** | H2 is now an effect-size estimate plus per-step direction comparison; no causal-equivalence inference. |
 
-**Cycle 2:** pending. Revision 2 has been sent to the same reviewer for a final verdict (max two cycles, `AGENTS.md` §5).
+**Cycle 2** (Codex, task `task_71c07d07ef05`, dispatch `ctx_4180e1f47c37`, message `msg_6395188246c1`; appended to `docs/reviews/phase7-codex-reviews-claude.md`): **score 7/10, PROCEED.**
+- Fixes 1, 2, 3 and 6: RESOLVED.
+- Fix 4: PARTIAL. [PIN] items must be pinned before freeze; the plan already requires that.
+- Fix 5: UNRESOLVED. It covered two things: the 90% vs 95% inconsistency, and a variance gate based on three pilot runs.
+- New claims: DTO-KD description AGREE (wording made precise); H0′ AGREE on the algebra, HYPOTHESIS for accuracy; TOST arithmetic AGREE; run count AGREE; GPU bounds should read 119–236.
+
+**Coordinator disposition** (maximum cycles reached; recorded in `docs/reviews/phase7-summary-and-unresolved.md`):
+- Fix 5 is resolved by *removing* the pilot-variance gate. Equivalence becomes an always-reported secondary analysis with a 90% TOST, and the report text is aligned to it.
+- The DTO-KD wording now says "equal first-order contribution"; the budget now reads 119–236.
+- No third review cycle; the remaining verification happens at the [PIN] freeze before any run.
 
 ## RECOMMENDATION (revision 2, pending cycle-2 verdict)
 - **Adopt I1\* as the sole confirmatory study:** *priority vs symmetry in KD gradient combination*. PCD(CE | KD) vs DTO-KD vs DOT vs a tuned normalised weighted sum, with KD and one loss-side plug-in (KD+LS, PCD on top), on CIFAR-100 ResNet32x4 → ResNet8x4 with 10 seeds. This answers "how does PCD compare with state-of-the-art KD" where the comparison is meaningful (the optimizer family), and produces the missing conflict measurements.

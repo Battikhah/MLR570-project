@@ -59,12 +59,11 @@ Notes:
   - all seeds listed.
 - **Decision rules:**
   - **Superiority:** claimed if the Holm-adjusted p-value is < 0.05.
-  - **Equivalence:** claimed only if the 90% TOST interval lies inside ±δ, with δ = 0.5 points.
-    - δ is set before the pilot as a practically meaningful KD gap. The pilot's seed standard deviation is reported against it.
-    - With n = 10 pairs, the 90% CI half-width is t₀.₉₅,₉·SD_diff/√10 ≈ 0.58·SD_diff.
-    - If seed noise is independent between arms, SD_diff ≈ √2·SD_seed, so the half-width ≈ 0.82·SD_seed.
-    - Requiring a half-width ≤ δ/2 = 0.25 for reasonable power gives SD_seed ≲ 0.30.
-    - If the pilot seed SD is > 0.30, the equivalence analysis is declared underpowered and dropped *before* confirmatory runs (or the seed count is raised with separate approval).
+  - **Equivalence (secondary analysis, not gated):** for each contrast, report the 90% TOST interval (two one-sided tests at α = 0.05 each), with δ = 0.5 points fixed now.
+    - Claim equivalence only if that interval lies entirely inside ±δ.
+    - It is always computed and reported, whatever the pilot shows. No pilot-variance gate applies (cycle-2 disposition: three pilot runs cannot estimate SD reliably).
+    - Expected precision, for transparency only: with n = 10 pairs the half-width ≈ 0.58·SD_diff (t₀.₉₅,₉/√10). With independent seed noise, SD_diff ≈ √2·SD_seed, so half-width ≈ 0.82·SD_seed.
+    - The realised SD_diff from the 10 confirmatory pairs is reported, and equivalence conclusions are read against it.
   - **Otherwise the result is "inconclusive".**
 - **Exploratory, uncorrected, labelled as such:**
   - A6b vs A6a (does PCD add to LS?);
@@ -82,7 +81,7 @@ Notes:
 - **Outputs:**
   - measured GPU-h per arm, which replaces §4;
   - the c distribution and active rate;
-  - seed-noise SD from A1 run on 2 extra seeds (+2 runs).
+  - seed-noise SD from A1 run on 2 extra seeds (+2 runs). **Descriptive only:** three runs give a low-precision SD estimate, so it gates nothing.
 - **Go** if:
   - (i) the measured budget for §4 fits the approved GPU allowance;
   - (ii) the shadow directions show A3, A4 and A5 differ on a non-trivial fraction of steps (direction cosine < 0.99 on ≥ 10% of logged steps).
@@ -95,7 +94,7 @@ Notes:
 | Selection: A1, A2, A3, A4, A5, A6b × 3; A0, A6a × 1 | 20 | 3 single-pass (A1) + 2 published (A0, A6a) + 15 two-pass | ~28–57 |
 | Confirmatory: A2–A5 × 10 seeds | 40 | two-pass (A3 exact) | ~60–120 |
 | Exploratory: A0, A1, A6a, A6b × 5 seeds | 20 | 15 single-pass + 5 two-pass | ~23–45 |
-| **Total** | **86** | | **≈ 120–235 GPU-h** |
+| **Total** | **86** | | **≈ 119–236 GPU-h (say ~120–240)** |
 
 The range reflects unmeasured throughput. Codex's mechanism note gives 1–4 h per CIFAR-100 two-pass run on one A100-class GPU, also unmeasured.
 
