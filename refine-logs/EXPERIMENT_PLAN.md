@@ -1,131 +1,116 @@
-# EXPERIMENT PLAN — PCD vs state-of-the-art KD (I1) and reversed priority under unreliable teachers (I4)
+# EXPERIMENT PLAN rev. 2 — Priority vs symmetry in KD gradient combination (I1*)
 
-Status: **DRAFT for cross-review and human approval.** Nothing in this plan runs until approved.
-- Gates: ⛔ teacher-checkpoint download, ⛔ CIFAR download on the GPU server, ⛔ every GPU run.
-- Compute figures are **ESTIMATES** (one A100-class GPU), to be replaced by a measured pilot.
-- Hyperparameters marked [VERIFY] are recalled from the mdistiller configs and must be checked against the repo
-  (`megvii-research/mdistiller`, MIT) before freezing.
+Status: **DRAFT, revised after Codex review cycle 1** (`docs/reviews/phase7-codex-reviews-claude.md`).
+- Nothing runs until approved: ⛔ the CIFAR-100 download on the GPU server, ⛔ the mdistiller teacher checkpoint, ⛔ every GPU run.
+- GPU-hours are **ESTIMATES** until the pilot measures them.
+- [PIN] items must be fixed to a commit SHA or config value before the plan is frozen. The frozen plan's commit hash is recorded before the first confirmatory run.
 
-## 0. Shared protocol
-- **Benchmark:** CIFAR-100, mdistiller protocol.
-  - [VERIFY] 240 epochs, SGD with momentum 0.9, batch 64, weight decay 5e-4.
-  - [VERIFY] Learning rate 0.05 (0.01 for ShuffleNet/MobileNet students), decayed ×0.1 at epochs 150/180/210.
-  - Teachers: the mdistiller pretrained checkpoints (⛔ download).
-- **Pairs:**
-  - P1: ResNet32x4 → ResNet8x4 (the main reference pair; most published numbers);
-  - P2: VGG13 → VGG8;
-  - P3: ResNet32x4 → ShuffleNet-V2 (heterogeneous; DOT and LSKD report it).
-- **Model selection:**
-  - a 5,000-image stratified validation split from train (`pcdkd.data.cifar_splits`, Stage 1 code);
-  - hyperparameters chosen on validation with 1 seed, then **frozen**;
-  - final results over **5 seeds**, reported on the test set with every seed listed;
-  - published numbers are quoted as context only, never as our baseline runs.
-- **Equal tuning budget:** each method with a tunable weight gets the same number of grid points (4).
-- **Statistics:** paired by seed; bootstrap 95% CIs on differences; TOST equivalence with δ = 0.5 points; Holm correction within each RQ.
-- **Diagnostics logged every step (Stage 1 `pcdkd.eval.diagnostics`):**
-  - cos(g_CE, g_KD) and, for K=3, every pairwise cosine;
-  - raw and EMA norms;
-  - active-set rate and implicit λ_t;
-  - `prop47_margin_actual` and its non-positive fraction;
-  - the infeasible rate (K=3).
-- **Reproducibility:** run manifest (config, seed, commit, torch/CUDA versions); deterministic data order.
+## 0. Protocol (fixed for all arms)
+- **Data:** CIFAR-100. Train on 45,000 images; 5,000 stratified **validation** images (`pcdkd.data.cifar_splits`, `split_seed = 0`); the test set is used only for final reporting.
+- **Pair P1:** ResNet32x4 teacher (mdistiller checkpoint [PIN]) → ResNet8x4 student. This is the pair reported by mdistiller, LSKD and DTO-KD.
+- **Schedule:**
+  - mdistiller `configs/cifar100/dkd/res32x4_res8x4.yaml` (Codex-verified on `master`, SHA [PIN]);
+  - 240 epochs, SGD with momentum 0.9, batch 64, weight decay 5e-4;
+  - learning rate 0.05, ×0.1 at epochs 150, 180 and 210.
+- **KD loss:** Hinton KD with the mdistiller KD config (temperature, loss weights [PIN]); identical in every arm.
+- **Seeds:** a seed fixes initialisation, data order and augmentation, and is **matched across arms** so differences can be paired.
+- **Endpoint (primary):** test top-1 at the final epoch, for the configuration selected on validation. No checkpoint or config selection on test.
 
-## 1. Pilot (go/no-go), P1 only, 1 seed, full 240 epochs
-Arms: KD, PCD(CE | KD) τ = 0.05, PCD(CE | TCKD, NCKD) τ = 0.05, DKD at its default.
+## 1. Arms
+| ID | Arm | Combination rule | Native grid (exactly 3 configs) | Backward passes per step |
+|---|---|---|---|---|
+| A0 | CE only | — | — (1 config) | 1 |
+| A1 | KD | fixed weighted sum (mdistiller weights) | KD weight ×{0.5, 1, 2} of the mdistiller default | 1 |
+| A2 | KD + DOT | separate momenta | δ ∈ {0.05, **0.075** (official), 0.1} | 2 |
+| A3 | **DTO-KD**, reimplemented, logit KD | min-norm on [∇log L_KD, ∇log L_CE], closed form (Eqs. 11–12) | {exact, amortised η_π = 1e-3, amortised η_π = 1e-2} | 2 (exact) / 1 (amortised) |
+| A4 | **PCD(CE \| KD)** | priority projection, EMA normalisation, rescale to ‖g_CE‖ | τ ∈ {0.1, 0.5, 1.0} | 2 |
+| A5 | **Normalised-WS control** | d = s_CE·g_CE + λ·s_KD·g_KD, rescaled to ‖g_CE‖ | λ ∈ {0.1, λ̄_PCD (pilot mean of PCD's μ, counted as a grid point), 1.0} | 2 |
+| A6a | KD + LS (LSKD) | fixed sum, standardised logits | published LS settings (1 config) | 1 |
+| A6b | PCD(CE \| KD+LS) | as A4, with the LS KD loss | τ ∈ {0.1, 0.5, 1.0} | 2 |
 
-Measure:
-- the cosine distributions;
-- the active rate;
-- wall-clock per epoch per arm (replaces every ESTIMATE below).
+Notes:
+- **Why the τ grid reaches 1.0 (TG, PCD Cor. 4.3/4.6, unit-norm view):**
+  - With CE primary, the constraint is inactive whenever KD already gets τ-progress (c ≥ τ). The update is then the pure CE direction.
+  - With small τ and aligned gradients, PCD(CE | KD) may therefore approximate CE-only training (A0) and discard KD's extra signal.
+  - At τ = 1 the constraint is always active, giving d = g̃_CE + (1 − c)·g̃_KD.
+  - **HYPOTHESIS H0′:** PCD at small τ performs close to A0, and only larger τ recovers KD's benefit. The pilot's distribution of c decides whether τ ∈ {0.1, 0.5, 1.0} brackets the active regime.
+- **Exact definition of the A5 control** (identical to A4 except the coefficient):
+  - the same `pcdkd.optim.EMANormalizer` (β = 0.99 [PIN], ε = 1e-8, bias correction, per-loss state starting at t = 0, updated every step);
+  - λ multiplies the *normalised* KD gradient;
+  - the same final rescale to ‖g_CE‖;
+  - the same SGD momentum buffer, weight decay and learning rate, with no state reset;
+  - the same mean batch reduction for both losses.
 
-**Go** if both hold:
-- (i) the cosine distribution or the active rate shows PCD is not just a fixed weighted sum. Concretely, an active rate < 95% or a cosine standard deviation > 0.05.
-- (ii) the measured cost fits the approved budget.
+  A4 − A5 therefore isolates *adaptive projection versus a fixed coefficient*.
+- **A3 reimplementation:**
+  - Eqs. 11–12 on the Gram matrix of the log-loss gradients, π projected to the simplex;
+  - the amortised Eq. 18 update followed by a softmax renormalisation, as stated in the paper;
+  - DTO-KD's feature projection P and its separate heads are **omitted**, so that every arm shares one logit-KD loss. This is a limitation: we compare combination rules, not the full DTO-KD system.
+  - Unit tests check π* against a brute-force simplex minimisation and check Cor. 3.3 (equal inner products) numerically.
+- **Equal tuning budget:** 3 validation configurations per tunable arm, 1 seed each. Shared settings are never tuned per arm. Published-default arms (A0, A6a) get 1 configuration and are labelled as such.
 
-**Otherwise:** report the pilot as a negative mechanism result and run only the reduced I1-B (§2, arms 1–6) plus I4.
+## 2. Hypotheses and statistics
+- **Confirmatory family** (Holm-corrected, α = 0.05; 10 paired seeds each):
+  - **C1:** A4 vs A3 (priority vs symmetry);
+  - **C2:** A4 vs A5 (projection vs a fixed normalised coefficient);
+  - **C3:** A4 vs A2 (vs the momentum split).
+- **Analysis of each contrast:**
+  - the 10 per-seed differences, their mean, a 95% t-interval and a paired bootstrap interval;
+  - all seeds listed.
+- **Decision rules:**
+  - **Superiority:** claimed if the Holm-adjusted p-value is < 0.05.
+  - **Equivalence:** claimed only if the 90% TOST interval lies inside ±δ, with δ = 0.5 points.
+    - δ is set before the pilot as a practically meaningful KD gap. The pilot's seed standard deviation is reported against it.
+    - With n = 10 pairs, the 90% CI half-width is t₀.₉₅,₉·SD_diff/√10 ≈ 0.58·SD_diff.
+    - If seed noise is independent between arms, SD_diff ≈ √2·SD_seed, so the half-width ≈ 0.82·SD_seed.
+    - Requiring a half-width ≤ δ/2 = 0.25 for reasonable power gives SD_seed ≲ 0.30.
+    - If the pilot seed SD is > 0.30, the equivalence analysis is declared underpowered and dropped *before* confirmatory runs (or the seed count is raised with separate approval).
+  - **Otherwise the result is "inconclusive".**
+- **Exploratory, uncorrected, labelled as such:**
+  - A6b vs A6a (does PCD add to LS?);
+  - A4 vs A1 and A0;
+  - H0′.
+- **Mechanism outcomes** (descriptive; logged every 50 steps):
+  - cos(g_CE, g_KD) distribution;
+  - PCD active rate, μ, and `prop47_margin_actual`;
+  - DTO-KD π;
+  - realised update-direction alignment after momentum;
+  - **shadow directions:** on the same batch gradients, compute the A3, A4 and A5 directions and their pairwise cosines. This is cheap, adds no backward pass, and shows how often the rules actually differ.
 
-Estimate: 4 runs × ~1.5 GPU-h ≈ 6 GPU-h.
+## 3. Pilot (go/no-go before any confirmatory run)
+- **Runs:** A0, A1, A3 (exact), A4 (τ = 0.5); 1 seed; full 240 epochs; ≈ 4 runs.
+- **Outputs:**
+  - measured GPU-h per arm, which replaces §4;
+  - the c distribution and active rate;
+  - seed-noise SD from A1 run on 2 extra seeds (+2 runs).
+- **Go** if:
+  - (i) the measured budget for §4 fits the approved GPU allowance;
+  - (ii) the shadow directions show A3, A4 and A5 differ on a non-trivial fraction of steps (direction cosine < 0.99 on ≥ 10% of logged steps).
+- **If (ii) fails:** the rules are numerically near-identical on this benchmark. Report that as the finding, run only C2 and the exploratory set, and skip C1/C3 superiority.
 
-## 2. RQ1 / I1 — PCD vs state-of-the-art KD
-Arms, all on the same student, teacher and schedule:
-
-| # | Arm | Family | Tuned on validation |
+## 4. Run count and budget (ESTIMATE; row by row)
+| Block | Runs | GPU-h per run (1-pass / 2-pass) | GPU-h |
 |---|---|---|---|
-| 1 | KD (Hinton) | loss baseline | T |
-| 2 | DKD | loss state of the art | β ∈ 4 values [VERIFY default α = 1] |
-| 3 | KD + DOT | optimizer state of the art | DOT momentum gap, 4 values [VERIFY] |
-| 4 | KD + LS (LSKD) | loss state of the art | as published |
-| 5 | **PCD(CE \| KD)** | ours | τ ∈ {0.01, 0.05, 0.1, 0.2} |
-| 6 | **Normalised-WS control**: EMA-normalised CE + λ·KD with PCD's final rescale | decisive control | λ grid of 4 that includes the pilot's mean τ − c̄ |
-| 7 | **PCD(CE \| TCKD, NCKD)** K=3 | ours ("tuning-free DKD") | τ ∈ 4 values |
-| 8 | PCGrad / CAGrad / MGDA on (CE, TCKD, NCKD) | symmetric multi-objective | CAGrad c ∈ {0.2, 0.5} |
-| 9 | **PCD + LS** (LSKD loss as the secondary) | plug-in | τ ∈ 4 values |
-| 10 | DKD + LS | loss state of the art | as published |
+| Pilot | 6 (4 + 2 seed-noise) | ~1–2 / ~1.5–3 | ~8–14 |
+| Selection: A1, A2, A3, A4, A5, A6b × 3; A0, A6a × 1 | 20 | 3 single-pass (A1) + 2 published (A0, A6a) + 15 two-pass | ~28–57 |
+| Confirmatory: A2–A5 × 10 seeds | 40 | two-pass (A3 exact) | ~60–120 |
+| Exploratory: A0, A1, A6a, A6b × 5 seeds | 20 | 15 single-pass + 5 two-pass | ~23–45 |
+| **Total** | **86** | | **≈ 120–235 GPU-h** |
 
-**Hypotheses (preregistered):**
-- **H1, non-inferiority:** arm 7 with a *single τ fixed across P1–P3* is within δ of DKD with β tuned per pair.
-- **H2, mechanism:** arm 5 vs arm 6 is equivalent (TOST) when the pilot's active rate is ≥ 95%. A difference is expected only when the conflict varies.
-- **H3:** arm 5 vs DOT (arm 3); two-sided, exploratory.
-- **H4:** arm 9 > arm 4 (PCD adds to LSKD).
+The range reflects unmeasured throughput. Codex's mechanism note gives 1–4 h per CIFAR-100 two-pass run on one A100-class GPU, also unmeasured.
 
-Runs:
-- selection ≈ 22 per pair;
-- final 10 arms × 5 seeds = 50 per pair (arm 8 counts as one row of three methods; budget it as 3 arms);
-- about 3 × 80 ≈ 240 runs in total.
+## 5. Follow-up (only after I1*, separately approved): I4, priority-order ablation
+- P1, with teacher outputs corrupted on 30% of training indices plus a 0% control.
+- Arms: KD, tuned NWKD, PCD(CE | KD), PCD(KD | CE), gated NWKD, gated PCD(KD | CE), and RLD (identical teacher logits; licence and protocol [PIN]).
+- **Claim scope:**
+  - PCD's μ is batch-level and does not select corrupted examples;
+  - per-example teacher correctness, confidence and loss are logged as diagnostics only;
+  - no reliability-protection claim is made.
+- **Budget:** about 7 arms × 2 conditions × 5 seeds + selection ≈ 90 runs (ESTIMATE, re-derived after the I1* pilot).
 
-Estimate:
-
-| Arm type | GPU-h per run |
-|---|---|
-| KD, DKD, LS | ~1.0 |
-| K=2 multi-objective (two backward passes) | ~1.6 |
-| K=3 multi-objective | ~2.2 |
-
-**About 350–450 GPU-h for all three pairs.**
-- **I1-A, reduced (P1 + P3 only):** ≈ 250 GPU-h.
-- **I1-B, minimal (P1 only):** ≈ 130 GPU-h.
-
-Optional ImageNet with ResNet34 → ResNet18 (⛔ ImageNet licence and download; 100 epochs, roughly 8 GPU-days per run, ESTIMATE): one seed each of KD, DOT, PCD(CE | KD) and the normalised-WS control, as an external-validity check only.
-
-## 3. RQ2 / I4 — reversed priority under unreliable teachers
-- **Setting:** P1 (ResNet32x4 → ResNet8x4).
-- **Teacher outputs:**
-  - (a) natural, with the teacher's own test errors kept;
-  - (b) 30% training-index corruption (Stage 1 `pcdkd.data.corruption`, log-space, nested);
-  - (c) 0% as the control.
-- **Arms:**
-  1. KD;
-  2. RLD (official code `zju-SWJ/RLD`) [VERIFY licence];
-  3. tuned NWKD (normalised WS) whose λ grid includes high CE weights;
-  4. PCD(CE | KD), CE primary (the former objective S);
-  5. **PCD(KD | CE)**, KD primary (reversed);
-  6. gated NWKD (correctness + confidence gate, Stage 1 `pcdkd.losses.gate`);
-  7. gated reversed PCD.
-- **Hypotheses:**
-  - **H5:** under 30% corruption, arm 5 > arm 4.
-  - **H6:** under 30% corruption, arm 5 vs arm 2 (RLD); two-sided, exploratory.
-  - **H7:** at 0% corruption, arm 5 is non-inferior to KD within δ.
-- **Mechanism check:** the implicit CE weight λ_t on batches with a high corrupted fraction vs a low one. This needs per-batch corruption-fraction logging.
-- **Runs:** 7 arms × 3 conditions × 5 seeds, plus selection, ≈ 120 runs. **Estimate ≈ 160 GPU-h.**
-
-## 4. Total budget (ESTIMATE, before the pilot)
-| Package | GPU-h |
-|---|---|
-| Pilot | ~6 |
-| I1-B + I4 (minimum viable paper) | ~300 |
-| I1-A + I4 | ~420 |
-| Full I1 + I4 | ~570–620 |
-
-## 5. Code reuse and new code
-- **Reused from Stage 1:**
-  - combiners (wkd, nwkd, pcgrad_onto_primary, pcd, adaptive_lambda);
-  - the PCD QP (K ≤ MAX_K), EMA normaliser and diagnostics;
-  - corruption, gate, splits and config.
-- **New code:**
-  - mdistiller-compatible trainer, or porting PCD into mdistiller as a "distiller + trainer" pair (RECOMMENDATION: port into mdistiller, so that DOT, DKD and the teachers are byte-identical to the published code);
-  - TCKD/NCKD loss terms;
-  - CAGrad/MGDA (K=3);
-  - LS standardisation;
-  - an RLD adapter;
-  - removal of the CPU-side Gram matrix sync on CUDA (Stage 1 review finding 1).
-- **Review:** every new component gets Claude↔Codex cross-review and a synthetic CPU test before any GPU run (roadmap Stage 2 rules).
+## 6. Code work (Stage 2 replacement; all cross-reviewed, with synthetic CPU tests before GPU)
+- Port PCD (reusing `pcdkd.optim`) and the A5 control into mdistiller as a trainer/distiller pair, so DOT and the teachers are byte-identical to the official code ([PIN] SHA).
+- DTO-KD exact and amortised combiners, with closed-form and Cor. 3.3 tests.
+- LS standardisation for A6.
+- Shadow-direction logging.
+- On CUDA, compute the Gram matrix on the device in float64 (removes the MPS-motivated CPU sync).

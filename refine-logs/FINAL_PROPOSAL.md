@@ -1,41 +1,40 @@
-# FINAL PROPOSAL (draft, pending cross-review): Priority-Constrained Distillation
+# FINAL PROPOSAL rev. 2 (pending cycle-2 review): Priority vs symmetry in knowledge distillation
 
-**Title (working):** *Which objective comes first? Priority-constrained descent against state-of-the-art knowledge distillation.*
+**Working title:** *Should the label come first? Priority-constrained descent versus symmetric trade-off optimisation in knowledge distillation.*
 
 ## Problem
-- KD trains a student on a task loss (CE) plus distillation losses whose gradients can differ in scale and direction.
-- **What is published:**
-  - State-of-the-art gains come mostly from loss design (DKD, MLKD, LSKD, RLD).
-  - Optimizer-side fixes are fewer: DOT's momentum split, MEMA's penalty, and MGDA for ensembles. MoKD is withdrawn.
-- **Two gaps:**
-  - No study has measured how much CE and KD actually conflict in standard full-data KD. Measured conflict exists only in VLM few-shot distillation (DHO) and in adversarial training (CA-AT).
-  - No study has tested a *priority* rule (one objective first, the others guaranteed minimal progress) on KD.
+- KD trains a student on a task loss (CE) and a distillation loss whose gradients can differ in scale and direction.
+- **The optimizer-side state of the art treats the two symmetrically:**
+  - **DTO-KD** (ICLR 2026): min-norm weighting of log-loss gradients that equalises progress on both.
+  - **DOT** (ICCV 2023): a separate, larger momentum for the KD gradient.
+- **PCD** (TMLR 2026) argues that objectives are not equal. It keeps a fixed primary and guarantees each secondary only τ-progress. It has never been tested on KD.
+- No study reports how much CE and KD actually conflict per step on the standard CIFAR-100 benchmark.
 
-## Method
-Use PCD (Varam & AlHajri, TMLR 2026) as the gradient combiner in KD, in two priority orders:
-- **(a)** CE primary, distillation terms as secondaries. K=2 with KD, or K=3 with DKD's TCKD/NCKD, aiming for a single-τ, scale-invariant replacement for DKD's weight tuning.
-- **(b)** KD primary, CE as a progress constraint. Theory (PCD Cor. 4.6) gives a CE weight max(0, τ − c) that grows only when the teacher contradicts the label.
+## Research question
+On an identical CIFAR-100 protocol (ResNet32x4 → ResNet8x4), does a fixed-priority rule (CE first, KD guaranteed τ-progress) give a better, equal, or worse student than:
+- the symmetric rule (DTO-KD);
+- the momentum split (DOT);
+- a budget-matched normalised weighted sum?
 
-## Contributions (all conditional on results; no claim of improvement is made in advance)
-1. The first per-step measurement of CE–KD and TCKD–NCKD gradient conflict on the standard CIFAR-100 KD benchmark.
-2. A fair, preregistered comparison of PCD with the optimizer-side state of the art (DOT) and symmetric multi-objective methods. It includes a normalisation-only control that separates projection effects from scale effects.
-3. PCD as a plug-in on DKD and LSKD.
-4. A reversed-priority variant for unreliable teachers, compared with target-repair (RLD) and gating.
+How often do these rules actually produce different update directions?
 
-## Expected outcomes (HYPOTHESES)
-- PCD ≈ a normalised weighted sum wherever conflict is weak, so any gain over KD comes mainly from normalisation.
-- K=3 PCD matches tuned DKD without per-pair tuning.
-- The reversed priority beats CE-primary PCD under corruption.
+## Contributions (conditional on results; no improvement is claimed in advance)
+1. A controlled comparison of combination rules on one loss, teacher, schedule and data order, with 10 paired seeds, a Holm-corrected confirmatory family, and preregistered equivalence margins.
+2. The first per-step measurements, on this benchmark, of CE–KD conflict, PCD's active rate, DTO-KD's weights, and the shadow-direction agreement between rules.
+3. A theory-derived prediction, H0′, tested explicitly: with CE primary and small τ, PCD reduces toward CE-only training (PCD Cor. 4.3).
+4. Exploratory: PCD as a plug-in on a loss-side method (LS).
 
-Null results are reported as such.
+## Explicit non-claims
+- No claim of a new absolute state of the art. Loss-side methods such as MLKD+LS (78.28) are outside the comparison family.
+- DTO-KD is reimplemented without its feature projection or separate heads; the comparison is of combination rules only.
+- The unreliable-teacher study (I4) is a separately approved follow-up and an ablation of priority order. PCD's coefficient is batch-level and does not identify corrupted examples.
 
-## Relation to the course deliverables
-- The survey gains a section contrasting optimizer-side and loss-side KD, with PCD and FedPCD positioned against DOT, MoKD, MEMA, AE-KD and CA-AT.
-- The project keeps the submitted unreliable-teacher question (RQ2) and adds a state-of-the-art comparison (RQ1).
-- This supersedes decision 0001 (objective S), which needs a new decision 0002 and instructor acknowledgement.
+## Course fit
+- **Survey:** gains a section contrasting optimizer-side and loss-side KD, with PCD, FedPCD, DTO-KD, DOT, MEMA, CA-AT and DHO.
+- **Project:** keeps gradient conflict central, and keeps the proposal's unreliable-teacher question as the follow-up.
+- **Decision:** supersedes decision 0001, which needs a decision 0002 and instructor acknowledgement.
 
-## Plan and budget
-See `refine-logs/EXPERIMENT_PLAN.md`:
-- a pilot of about 6 GPU-h;
-- a minimum viable paper of about 300 GPU-h (estimate);
-- all GPU work, downloads and checkpoint use need approval.
+## Budget
+- A pilot of about 8–14 GPU-h.
+- About 120–235 GPU-h in total (ESTIMATE, `EXPERIMENT_PLAN.md` §4).
+- Every download and GPU run requires approval.
