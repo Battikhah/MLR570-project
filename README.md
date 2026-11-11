@@ -23,3 +23,5 @@ Priority-Constrained Descent (PCD).
 - Agents: read `AGENTS.md` (shared rules; `CLAUDE.md` imports it).
 - Orca worktree setup is defined in `orca.yaml` (runs `uv sync --frozen` once a Python project exists).
 - Python environment: `uv sync`, tests: `uv run pytest` (once `pyproject.toml` exists).
+- Experiments: the full PCD-in-KD suite (families, arms, GPU run order, analysis) is in
+  `docs/experiment-suite.md`; `uv run python scripts/run_suite.py list` shows its size.

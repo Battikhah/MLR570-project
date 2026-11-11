@@ -1,4 +1,6 @@
 """CIFAR ResNets (6n+2); option-A shortcuts follow He et al. (2016), §4.2."""
+import re
+
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -45,7 +47,9 @@ class BasicBlock(nn.Module):
 
 
 class CifarResNet(nn.Module):
-    def __init__(self, depth, num_classes=10, shortcut_type="A"):
+    """``widths`` = (stem, stage1, stage2, stage3); (32, 64, 128, 256) is mdistiller's "x4"."""
+
+    def __init__(self, depth, num_classes=10, shortcut_type="A", widths=(16, 16, 32, 64)):
         super().__init__()
         if (depth - 2) % 6:
             raise ValueError("depth must be 6n+2")
@@ -53,13 +57,14 @@ class CifarResNet(nn.Module):
             raise ValueError("shortcut_type must be 'A' or 'B'")
         n = (depth - 2) // 6
         self.shortcut_type = shortcut_type
-        self.in_channels = 16
-        self.conv1 = nn.Conv2d(3, 16, 3, 1, 1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.layer1 = self._layer(16, n, 1)
-        self.layer2 = self._layer(32, n, 2)
-        self.layer3 = self._layer(64, n, 2)
-        self.linear = nn.Linear(64, num_classes)
+        stem, w1, w2, w3 = widths
+        self.in_channels = stem
+        self.conv1 = nn.Conv2d(3, stem, 3, 1, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(stem)
+        self.layer1 = self._layer(w1, n, 1)
+        self.layer2 = self._layer(w2, n, 2)
+        self.layer3 = self._layer(w3, n, 2)
+        self.linear = nn.Linear(w3, num_classes)
 
     def _layer(self, channels, blocks, stride):
         layers = [BasicBlock(self.in_channels, channels, stride, self.shortcut_type)]
@@ -70,10 +75,13 @@ class CifarResNet(nn.Module):
         )
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x, return_features=False):
         x = F.relu(self.bn1(self.conv1(x)))
-        x = self.layer3(self.layer2(self.layer1(x)))
-        return self.linear(F.avg_pool2d(x, 8).flatten(1))
+        f1 = self.layer1(x)
+        f2 = self.layer2(f1)
+        f3 = self.layer3(f2)
+        logits = self.linear(F.adaptive_avg_pool2d(f3, 1).flatten(1))
+        return (logits, [f1, f2, f3]) if return_features else logits
 
 
 def resnet8(num_classes=10, shortcut_type="A"):
@@ -90,3 +98,12 @@ def resnet20(num_classes=10, shortcut_type="A"):
 
 def resnet32(num_classes=10, shortcut_type="A"):
     return CifarResNet(32, num_classes, shortcut_type)
+
+
+def get_model(name, num_classes=10):
+    """``resnet<depth>`` (16/32/64 channels) or ``resnet<depth>x4`` (mdistiller widths)."""
+    m = re.fullmatch(r"resnet(\d+)(x4)?", name)
+    if not m:
+        raise ValueError(f"unknown model {name!r}; expected resnet<depth> or resnet<depth>x4")
+    widths = (32, 64, 128, 256) if m.group(2) else (16, 16, 32, 64)
+    return CifarResNet(int(m.group(1)), num_classes, widths=widths)
