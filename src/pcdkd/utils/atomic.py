@@ -1,7 +1,8 @@
-"""Atomic file replacement that tolerates a sync client (OneDrive, Google Drive) holding the file.
+"""Atomic file replacement that tolerates an uploader (rclone, a sync client) holding the file.
 
 On Windows, ``os.replace`` fails with PermissionError while another process has the target open,
-which a cloud-sync client does for a moment after each write.
+which an uploader does while it copies the file to the cloud. A large teacher checkpoint on a slow
+link can take minutes, so the default wait is long.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import time
 from pathlib import Path
 
 
-def replace_with_retry(tmp: Path, dst: Path, tries: int = 10, wait: float = 1.0) -> None:
+def replace_with_retry(tmp: Path, dst: Path, tries: int = 300, wait: float = 1.0) -> None:
     for i in range(tries):
         try:
             os.replace(tmp, dst)

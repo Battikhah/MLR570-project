@@ -45,25 +45,25 @@ The workstation is reached through GlobalProtect and RDP, and its rules shape ho
 | Rule | What the suite does |
 |---|---|
 | Use only Thursday 18:00 to Monday 08:00 (UAE time); use outside it is monitored | `--window aus` refuses to start outside the window and, after each epoch, pauses with a checkpoint once fewer than 20 min (`--stop-margin-min`) plus 1.5 epochs remain. It also starts no new run in that period. |
-| DeepFreeze wipes local data on any restart, power cut or crash | Results, teacher weights, run checkpoints and logs go to Google Drive, `My Drive/pcd-suite/` (`$PCDKD_OUT`). The code is a git clone of this repo, pulled each session and re-cloned after a wipe; the Python environment and CIFAR are rebuilt locally. Each `result.json` records the commit it ran. A wipe loses at most `--ckpt-every` epochs of the run in progress. |
+| DeepFreeze wipes local data on any restart, power cut or crash | Runs write to the local disk (`$PCDKD_OUT`), and rclone copies results, teacher weights, run checkpoints and logs to Google Drive, `My Drive/pcd-suite/`, every 5 minutes (`-SyncMinutes`); each session first pulls that copy back, so runs resume. No Drive app is needed: rclone is a portable exe and signs in through the browser (scope `drive.file`, so it sees only its own files). The code is a git clone of this repo, pulled each session and re-cloned after a wipe; the Python environment and CIFAR are rebuilt locally. Each `result.json` records the commit it ran. A wipe loses at most the last upload interval plus `--ckpt-every` epochs of the run in progress. |
 | No admin rights, Windows | uv installs per user. The CUDA build of the locked torch version is installed from the PyTorch index, because PyPI's Windows wheels are CPU-only. The run keeps Windows from sleeping while it works. |
 
 Steps:
 
 1. **Code changes:** push to `main` on GitHub. The workstation pulls it at the start of each session.
-2. **On the workstation, first window (and after any wipe):** sign in to Google Drive for desktop, then
+2. **On the workstation, first window (and after any wipe):** run
    `git clone https://github.com/Battikhah/MLR570-project "$env:LOCALAPPDATA\pcd-suite\code"` (sign in
    to GitHub when Git asks; the repo is private). From `scripts\workstation` in that clone, test access
-   without training: `powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly`. It pulls,
+   without training: `powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly`. It signs rclone in to Google (browser), restores earlier results from Drive, pulls,
    checks that CUDA works, runs the CPU tests, and downloads CIFAR (⛔ the first CIFAR download needs approval).
 3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
    claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share one priority queue:
    seed 0 of every family before any second seed, families ordered by `suite.PRIORITY` (most
    revealing first), each teacher trained just before its first user. Whatever finishes by Monday is
    the most informative subset; rerunning next window continues. `-Family "label-noise ..."` narrows it.
-4. **When leaving:** disconnect the RDP window. Do not sign out, because signing out ends the run.
+4. **When leaving:** keep the PowerShell window open (it does the uploads) and disconnect the RDP window. Do not sign out, because signing out ends the run.
 5. **Afterwards, on the Mac:** Google Drive's `My Drive/pcd-suite/outputs/<profile>/` holds every `result.json`;
-   point `scripts/analyze_suite.py --out` at it.
+   download it (or `rclone copy gdrive:pcd-suite/outputs <dir>`) and point `scripts/analyze_suite.py --out` at it.
 
 **Profiles** change the schedule only; the design is the same:
 - `full`: 240 epochs, the family's seed count.
