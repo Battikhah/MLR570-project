@@ -4,9 +4,9 @@ Run the PCD suite on the AUS GPU workstation (ESB-1043-20) for one access window
 Rules this script follows:
   * Access only Thursday 18:00 - Monday 08:00 (UAE time). The Python runner refuses to start
     outside the window and pauses with a checkpoint 20 minutes before it closes.
-  * DeepFreeze wipes the local disk on any restart. Everything that matters (results, teacher
-    weights, run checkpoints, logs, the CIFAR archives) is written to Google Drive; the local copy of
-    the code, Python environment and datasets is rebuilt each session.
+  * DeepFreeze wipes the local disk on any restart. The code comes from git (this clone is
+    pulled to the latest commit each session and re-cloned after a wipe). Everything a crash must
+    not lose (results, teacher weights, run checkpoints, logs) is written to Google Drive.
 
 What it runs: the whole suite (all 18 families of the chosen profile) as one priority queue,
 shared by -Procs processes on the GPU. Seed 0 of every family comes before any second seed, and
@@ -14,7 +14,10 @@ families run most-revealing first (src/pcdkd/experiments/suite.py, PRIORITY), so
 by Monday is the most informative subset. Each teacher is trained just before the first run that
 needs it. Rerunning the same command next window continues where it stopped.
 
-Usage, in PowerShell on the workstation (connected over GlobalProtect + RDP):
+Usage, in PowerShell on the workstation (connected over GlobalProtect + RDP). Once per wipe:
+  git clone https://github.com/Battikhah/MLR570-project "$env:LOCALAPPDATA\pcd-suite\code"
+Then:
+  cd "$env:LOCALAPPDATA\pcd-suite\code\scripts\workstation"
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly        # test access only
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1                   # whole suite, 3 procs
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -Procs 4 -Family "label-noise loss-scale"
@@ -26,7 +29,7 @@ param(
   [int]$Procs = 3,              # processes sharing the GPU (ResNet-8 students barely load one GPU)
   [string]$Family = "",         # optional subset, space-separated; default: every family
   [int]$Workers = 3,            # data-loading workers per process
-  [string]$Sync = "",
+  [string]$Sync = "",           # folder for results and logs; default: Google Drive "My Drive\pcd-suite"
   [switch]$SetupOnly
 )
 $ErrorActionPreference = "Stop"
@@ -41,15 +44,11 @@ if (-not $Sync) {
   if (-not $gd) { throw "Google Drive for desktop is not signed in (no 'My Drive' folder found). Sign in, or pass -Sync <synced folder>." }
   $Sync = Join-Path $gd "pcd-suite"
 }
-$Zip   = Join-Path $Sync "pcd-code.zip"
 $Out   = Join-Path $Sync "outputs"      # results, teachers, checkpoints: survive DeepFreeze
 $Logs  = Join-Path $Sync "logs"
-$Cache = Join-Path $Sync "data-cache"   # CIFAR archives, so a wipe does not mean a re-download
-$Work  = Join-Path $env:LOCALAPPDATA "pcd-suite"   # wiped by DeepFreeze; rebuilt below
-$Code  = Join-Path $Work "code"
-$Data  = Join-Path $Work "data"
-if (-not (Test-Path $Zip)) { throw "Missing $Zip. On the Mac run scripts/workstation/pack.sh and upload the zip there." }
-New-Item -ItemType Directory -Force $Out, $Logs, $Cache, $Work, $Data | Out-Null
+$Code  = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path   # this git clone (local, wiped by DeepFreeze)
+$Data  = Join-Path $env:LOCALAPPDATA "pcd-suite\data"           # CIFAR, re-downloaded after a wipe
+New-Item -ItemType Directory -Force $Out, $Logs, $Data | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 Start-Transcript -Path (Join-Path $Logs "session-$stamp.log") | Out-Null
 
@@ -60,10 +59,11 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 }
 
-# --- 2. fresh code ---------------------------------------------------------------------------------
-if (Test-Path $Code) { Remove-Item -Recurse -Force $Code }
-Expand-Archive -Path $Zip -DestinationPath $Code
+# --- 2. latest code from git -----------------------------------------------------------------------
 Set-Location $Code
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "git pull failed in $Code; fix it (or delete the folder and clone again)." }
+Write-Host "Code: $(git rev-parse --short HEAD) $(git log -1 --format=%s)"   # also saved in each result.json
 
 # --- 3. environment: the locked packages, then the CUDA build of the same torch version ------------
 # PyPI's Windows torch wheels are CPU-only. Every later command uses `uv run --no-sync` so uv does
@@ -79,16 +79,9 @@ if ($LASTEXITCODE -ne 0) { throw "CUDA is not available to torch; check the GPU 
 uv run --no-sync pytest -q -m "not slow and not requires_data"
 if ($LASTEXITCODE -ne 0) { throw "tests failed; not starting GPU runs" }
 
-# --- 5. CIFAR-10/100: from the Drive cache, downloading once if it is empty ----------------------
-foreach ($name in "cifar-10-python.tar.gz", "cifar-100-python.tar.gz") {
-  $cached = Join-Path $Cache $name
-  if (Test-Path $cached) { Copy-Item $cached (Join-Path $Data $name) }
-}
+# --- 5. CIFAR-10/100 (skipped when already downloaded this session) ---------------------------------
 uv run --no-sync python -c "from torchvision.datasets import CIFAR10, CIFAR100; import sys; [c(sys.argv[1], train=t, download=True) for c in (CIFAR10, CIFAR100) for t in (True, False)]" $Data
-foreach ($name in "cifar-10-python.tar.gz", "cifar-100-python.tar.gz") {
-  $cached = Join-Path $Cache $name
-  if (-not (Test-Path $cached)) { Copy-Item (Join-Path $Data $name) $cached }
-}
+if ($LASTEXITCODE -ne 0) { throw "CIFAR download failed" }
 if ($SetupOnly) { Write-Host "Setup OK. Results would go to $Out"; Stop-Transcript | Out-Null; exit 0 }
 
 # --- 6. run ------------------------------------------------------------------------------------------
