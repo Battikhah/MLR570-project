@@ -89,13 +89,14 @@ git pull --ff-only
 if ($LASTEXITCODE -ne 0) { throw "git pull failed in $Code; fix it (or delete the folder and clone again)." }
 Write-Host "Code: $(git rev-parse --short HEAD) $(git log -1 --format=%s)"   # also saved in each result.json
 
-# --- 5. environment: the locked packages, then the CUDA build of the same torch version ------------
-# PyPI's Windows torch wheels are CPU-only. Every later command uses `uv run --no-sync` so uv does
-# not put the CPU build back.
+# --- 5. environment: the locked packages, then a CUDA build of torch -------------------------------
+# PyPI's Windows torch wheels are CPU-only. The driver (571.59) supports CUDA <= 12.8, and the
+# locked torch 2.15 has only CUDA 13.2 builds for Windows, so install the newest CUDA 12.6 build:
+# torch 2.14.1 with torchvision 0.29.1. Every later command uses `uv run --no-sync` so uv does not
+# put the locked CPU build back.
 uv sync --frozen
-$ver = uv run --no-sync python -c "import torch, torchvision as tv; print(torch.__version__.split('+')[0], tv.__version__.split('+')[0])"
-$tv = $ver.Split(" ")
-uv pip install --reinstall "torch==$($tv[0])" "torchvision==$($tv[1])" --index-url https://download.pytorch.org/whl/cu126
+uv pip install --reinstall "torch==2.14.1" "torchvision==0.29.1" --index-url https://download.pytorch.org/whl/cu126
+if ($LASTEXITCODE -ne 0) { throw "installing the CUDA build of torch failed" }
 uv run --no-sync python -c "import sys, torch; ok = torch.cuda.is_available(); print('CUDA:', ok, torch.cuda.get_device_name(0) if ok else ''); sys.exit(0 if ok else 1)"
 if ($LASTEXITCODE -ne 0) { throw "CUDA is not available to torch; check the GPU driver before running anything." }
 
