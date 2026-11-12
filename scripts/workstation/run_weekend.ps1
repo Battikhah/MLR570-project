@@ -82,7 +82,8 @@ function Push-Drive {
 }
 
 # --- 3. pull back what earlier sessions saved, so runs resume ----------------------------------------
-& $rclone copy "$Dest/outputs" $Out --exclude "claim" --exclude "*.claim" --fast-list
+# --update: never replace a newer local file (a restart without a wipe) with an older Drive copy.
+& $rclone copy "$Dest/outputs" $Out --update --exclude "claim" --exclude "*.claim" --fast-list
 if ($LASTEXITCODE -ne 0) { throw "Could not restore earlier results from Google Drive." }
 
 # --- 4. latest code from git -----------------------------------------------------------------------
