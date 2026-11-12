@@ -130,7 +130,7 @@ $py = @("run", "--no-sync", "python", "scripts/run_suite.py")
 uv run --no-sync python scripts/run_suite.py clear-claims @select
 $args_ = $py + @("run") + $select + @("--queue", "--window", "aus", "--workers", $Workers,
                                       "--data-root", "`"$Data`"")
-$procs = foreach ($i in 1..$Procs) {
+$running = foreach ($i in 1..$Procs) {
   Start-Process -PassThru -NoNewWindow -FilePath "uv" -ArgumentList $args_ `
     -RedirectStandardOutput (Join-Path $Logs "worker$i-$stamp.log") `
     -RedirectStandardError (Join-Path $Logs "worker$i-$stamp.err")
@@ -138,8 +138,8 @@ $procs = foreach ($i in 1..$Procs) {
 }
 Write-Host "$Procs workers running; logs in $Logs. Keep this window open (it uploads to Google Drive)."
 Write-Host "Disconnect RDP (do not sign out) to leave."
-while ($procs | Where-Object { -not $_.HasExited }) {
-  $procs | Wait-Process -Timeout ($SyncMinutes * 60) -ErrorAction SilentlyContinue
+while ($running | Where-Object { -not $_.HasExited }) {
+  $running | Wait-Process -Timeout ($SyncMinutes * 60) -ErrorAction SilentlyContinue
   Push-Drive
 }
 Write-Host "Session finished. Results: Google Drive My Drive/pcd-suite/outputs"
