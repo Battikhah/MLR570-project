@@ -8,19 +8,24 @@ Rules this script follows:
     weights, run checkpoints, logs, the CIFAR archives) is written to OneDrive; the local copy of
     the code, Python environment and datasets is rebuilt each session.
 
+What it runs: the whole suite (all 18 families of the chosen profile) as one priority queue,
+shared by -Procs processes on the GPU. Seed 0 of every family comes before any second seed, and
+families run most-revealing first (src/pcdkd/experiments/suite.py, PRIORITY), so whatever finishes
+by Monday is the most informative subset. Each teacher is trained just before the first run that
+needs it. Rerunning the same command next window continues where it stopped.
+
 Usage, in PowerShell on the workstation (connected over GlobalProtect + RDP):
-  powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -Profile screen -Tier "0" -Stage teachers
-  powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -Profile screen -Tier "0 1" -Shards 3
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly        # test access only
+  powershell -ExecutionPolicy Bypass -File run_weekend.ps1                   # whole suite, 3 procs
+  powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -Procs 4 -Family "label-noise loss-scale"
 
 When leaving, DISCONNECT the RDP session (close the window); do not sign out, which kills the run.
 #>
 param(
   [string]$Profile = "screen",
-  [string]$Tier = "0",
-  [ValidateSet("all", "teachers", "students")][string]$Stage = "all",
-  [int]$Shards = 1,
-  [int]$Workers = 4,
+  [int]$Procs = 3,              # processes sharing the GPU (ResNet-8 students barely load one GPU)
+  [string]$Family = "",         # optional subset, space-separated; default: every family
+  [int]$Workers = 3,            # data-loading workers per process
   [string]$Sync = "",
   [switch]$SetupOnly
 )
@@ -88,24 +93,22 @@ if ($SetupOnly) { Write-Host "Setup OK. Results would go to $Out"; Stop-Transcri
 $ErrorActionPreference = "Continue"
 $env:PCDKD_OUT = $Out
 $env:PCDKD_WINDOW = "aus"
-$common = @("scripts/run_suite.py", "run", "--profile", $Profile, "--tier") + $Tier.Split(" ") +
-          @("--data-root", $Data, "--workers", $Workers, "--window", "aus")
-if ($Shards -le 1) {
-  uv run --no-sync python @common --stage $Stage 2>&1 | Tee-Object -FilePath (Join-Path $Logs "run-$stamp.log")
-} else {
-  # Teachers once, then one process per shard of students (small students do not fill one GPU).
-  if ($Stage -ne "students") {
-    uv run --no-sync python @common --stage teachers 2>&1 | Tee-Object -FilePath (Join-Path $Logs "teachers-$stamp.log")
-  }
-  if ($Stage -ne "teachers") {
-    $procs = foreach ($i in 0..($Shards - 1)) {
-      Start-Process -PassThru -NoNewWindow -FilePath "uv" `
-        -ArgumentList (@("run", "--no-sync", "python") + $common + @("--stage", "students", "--shard", "$i/$Shards")) `
-        -RedirectStandardOutput (Join-Path $Logs "shard$i-$stamp.log") `
-        -RedirectStandardError (Join-Path $Logs "shard$i-$stamp.err")
-    }
-    $procs | Wait-Process
-  }
+$select = @("--profile", $Profile)
+if ($Family) { $select += @("--family") + $Family.Split(" ") }
+$py = @("run", "--no-sync", "python", "scripts/run_suite.py")
+
+# Claims left by a previous session are stale (DeepFreeze or a closed window ended it): clear once,
+# before any worker starts.
+uv run --no-sync python scripts/run_suite.py clear-claims @select
+$args_ = $py + @("run") + $select + @("--queue", "--window", "aus", "--workers", $Workers,
+                                      "--data-root", "`"$Data`"")
+$procs = foreach ($i in 1..$Procs) {
+  Start-Process -PassThru -NoNewWindow -FilePath "uv" -ArgumentList $args_ `
+    -RedirectStandardOutput (Join-Path $Logs "worker$i-$stamp.log") `
+    -RedirectStandardError (Join-Path $Logs "worker$i-$stamp.err")
+  Start-Sleep -Seconds 20   # stagger start-up so the first teachers are claimed in order
 }
+Write-Host "$Procs workers running; logs in $Logs. Disconnect RDP (do not sign out) to leave."
+$procs | Wait-Process
 Write-Host "Session finished. Results: $Out  Logs: $Logs"
 Stop-Transcript | Out-Null

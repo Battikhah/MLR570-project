@@ -56,10 +56,11 @@ Steps:
    `scripts/workstation/run_weekend.ps1` anywhere, and test access without training:
    `powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly`. It checks that CUDA works,
    runs the CPU tests, and caches CIFAR in OneDrive (⛔ the first CIFAR download needs approval).
-3. **Each window:** for example
-   `run_weekend.ps1 -Profile screen -Tier "0" -Stage teachers`, then
-   `run_weekend.ps1 -Profile screen -Tier "0 1" -Shards 3`. Rerunning the same command next window
-   resumes where it paused.
+3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
+   claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share one priority queue:
+   seed 0 of every family before any second seed, families ordered by `suite.PRIORITY` (most
+   revealing first), each teacher trained just before its first user. Whatever finishes by Monday is
+   the most informative subset; rerunning next window continues. `-Family "label-noise ..."` narrows it.
 4. **When leaving:** disconnect the RDP window. Do not sign out, because signing out ends the run.
 5. **Afterwards, on the Mac:** OneDrive's `pcd-suite/outputs/<profile>/` holds every `result.json`;
    point `scripts/analyze_suite.py --out` at it.
