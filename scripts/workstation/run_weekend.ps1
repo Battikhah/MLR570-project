@@ -5,7 +5,7 @@ Rules this script follows:
   * Access only Thursday 18:00 - Monday 08:00 (UAE time). The Python runner refuses to start
     outside the window and pauses with a checkpoint 20 minutes before it closes.
   * DeepFreeze wipes the local disk on any restart. Everything that matters (results, teacher
-    weights, run checkpoints, logs, the CIFAR archives) is written to OneDrive; the local copy of
+    weights, run checkpoints, logs, the CIFAR archives) is written to Google Drive; the local copy of
     the code, Python environment and datasets is rebuilt each session.
 
 What it runs: the whole suite (all 18 families of the chosen profile) as one priority queue,
@@ -33,9 +33,13 @@ $ErrorActionPreference = "Stop"
 
 # --- where things live ---------------------------------------------------------------------------
 if (-not $Sync) {
-  $od = if ($env:OneDriveCommercial) { $env:OneDriveCommercial } else { $env:OneDrive }
-  if (-not $od) { throw "OneDrive is not signed in. Sign in with your AUS account, or pass -Sync <synced folder>." }
-  $Sync = Join-Path $od "pcd-suite"
+  # Google Drive for desktop: "My Drive" on its virtual drive (streaming, usually G:) or in the
+  # user profile (mirroring).
+  $roots = @(Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root "My Drive" }) +
+           @((Join-Path $env:USERPROFILE "My Drive"), (Join-Path $env:USERPROFILE "Google Drive"))
+  $gd = $roots | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if (-not $gd) { throw "Google Drive for desktop is not signed in (no 'My Drive' folder found). Sign in, or pass -Sync <synced folder>." }
+  $Sync = Join-Path $gd "pcd-suite"
 }
 $Zip   = Join-Path $Sync "pcd-code.zip"
 $Out   = Join-Path $Sync "outputs"      # results, teachers, checkpoints: survive DeepFreeze
@@ -75,7 +79,7 @@ if ($LASTEXITCODE -ne 0) { throw "CUDA is not available to torch; check the GPU 
 uv run --no-sync pytest -q -m "not slow and not requires_data"
 if ($LASTEXITCODE -ne 0) { throw "tests failed; not starting GPU runs" }
 
-# --- 5. CIFAR-10/100: from the OneDrive cache, downloading once if it is empty ----------------------
+# --- 5. CIFAR-10/100: from the Drive cache, downloading once if it is empty ----------------------
 foreach ($name in "cifar-10-python.tar.gz", "cifar-100-python.tar.gz") {
   $cached = Join-Path $Cache $name
   if (Test-Path $cached) { Copy-Item $cached (Join-Path $Data $name) }

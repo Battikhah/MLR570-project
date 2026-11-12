@@ -45,24 +45,24 @@ The workstation is reached through GlobalProtect and RDP, and its rules shape ho
 | Rule | What the suite does |
 |---|---|
 | Use only Thursday 18:00 to Monday 08:00 (UAE time); use outside it is monitored | `--window aus` refuses to start outside the window and, after each epoch, pauses with a checkpoint once fewer than 20 min (`--stop-margin-min`) plus 1.5 epochs remain. It also starts no new run in that period. |
-| DeepFreeze wipes local data on any restart, power cut or crash | Results, teacher weights, run checkpoints, logs and the CIFAR archives go to OneDrive (`$PCDKD_OUT`). Code, Python environment and extracted data are rebuilt locally each session. A wipe loses at most `--ckpt-every` epochs of the run in progress. |
+| DeepFreeze wipes local data on any restart, power cut or crash | Results, teacher weights, run checkpoints, logs and the CIFAR archives go to Google Drive, `My Drive/pcd-suite/` (`$PCDKD_OUT`). Code, Python environment and extracted data are rebuilt locally each session. A wipe loses at most `--ckpt-every` epochs of the run in progress. |
 | No admin rights, Windows | uv installs per user. The CUDA build of the locked torch version is installed from the PyTorch index, because PyPI's Windows wheels are CPU-only. The run keeps Windows from sleeping while it works. |
 
 Steps:
 
-1. **On the Mac:** `scripts/workstation/pack.sh`, then upload `~/Downloads/pcd-code.zip` to OneDrive
-   as `pcd-suite/pcd-code.zip`. Redo this whenever the code changes; the repo has no remote to clone.
-2. **On the workstation, first window:** sign in to OneDrive with the AUS account, copy
+1. **On the Mac:** `scripts/workstation/pack.sh`, then upload `~/Downloads/pcd-code.zip` to Google Drive
+   as `My Drive/pcd-suite/pcd-code.zip`. Redo this whenever the code changes; the repo has no remote to clone.
+2. **On the workstation, first window:** sign in to Google Drive for desktop, copy
    `scripts/workstation/run_weekend.ps1` anywhere, and test access without training:
    `powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly`. It checks that CUDA works,
-   runs the CPU tests, and caches CIFAR in OneDrive (⛔ the first CIFAR download needs approval).
+   runs the CPU tests, and caches CIFAR in Google Drive (⛔ the first CIFAR download needs approval).
 3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
    claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share one priority queue:
    seed 0 of every family before any second seed, families ordered by `suite.PRIORITY` (most
    revealing first), each teacher trained just before its first user. Whatever finishes by Monday is
    the most informative subset; rerunning next window continues. `-Family "label-noise ..."` narrows it.
 4. **When leaving:** disconnect the RDP window. Do not sign out, because signing out ends the run.
-5. **Afterwards, on the Mac:** OneDrive's `pcd-suite/outputs/<profile>/` holds every `result.json`;
+5. **Afterwards, on the Mac:** Google Drive's `My Drive/pcd-suite/outputs/<profile>/` holds every `result.json`;
    point `scripts/analyze_suite.py --out` at it.
 
 **Profiles** change the schedule only; the design is the same:

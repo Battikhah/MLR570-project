@@ -17,7 +17,7 @@ Shards split students only; run ``--stage teachers`` once before launching paral
 On the AUS workstation use ``--window aus`` (or PCDKD_WINDOW=aus): the run refuses to start outside
 Thursday 18:00 - Monday 08:00 (UAE time) and pauses with a checkpoint before the window closes.
 Rerunning the same command in the next window resumes. ``--out`` defaults to $PCDKD_OUT, which
-must point at a synced folder (OneDrive) there, because DeepFreeze wipes the local disk.
+must point at a synced folder (Google Drive) there, because DeepFreeze wipes the local disk.
 """
 
 import argparse
