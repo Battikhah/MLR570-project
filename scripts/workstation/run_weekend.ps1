@@ -35,6 +35,7 @@ param(
   [int]$Workers = 3,            # data-loading workers per process
   [int]$SyncMinutes = 5,        # how often results and checkpoints are copied to Google Drive
   [string]$Remote = "gdrive",   # rclone remote name
+  [string]$Data = "",           # CIFAR folder (e.g. on OneDrive); default: local, re-downloaded after a wipe
   [switch]$SetupOnly
 )
 $ErrorActionPreference = "Stop"
@@ -44,7 +45,7 @@ $env:PYTHONUTF8 = "1"   # Windows defaults to cp1252, which cannot write the Gre
 $Work  = Join-Path $env:LOCALAPPDATA "pcd-suite"
 $Out   = Join-Path $Work "outputs"      # results, teachers, checkpoints
 $Logs  = Join-Path $Work "logs"
-$Data  = Join-Path $Work "data"         # CIFAR, re-downloaded after a wipe
+if (-not $Data) { $Data = Join-Path $Work "data" }
 $Code  = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path   # this git clone
 $Dest  = "${Remote}:pcd-suite"
 New-Item -ItemType Directory -Force $Out, $Logs, $Data | Out-Null
