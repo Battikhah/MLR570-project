@@ -38,6 +38,7 @@ param(
   [switch]$SetupOnly
 )
 $ErrorActionPreference = "Stop"
+$env:PYTHONUTF8 = "1"   # Windows defaults to cp1252, which cannot write the Greek letters in reports and logs
 
 # --- where things live (all local, wiped by DeepFreeze; Google Drive holds the copy) ---------------
 $Work  = Join-Path $env:LOCALAPPDATA "pcd-suite"

@@ -221,8 +221,8 @@ def main():
     runs = load(root)
     if not runs:
         raise SystemExit(f"no result.json under {root}")
-    (root / "REPORT.md").write_text(report(runs))
-    with (root / "runs.csv").open("w", newline="") as f:
+    (root / "REPORT.md").write_text(report(runs), encoding="utf-8")
+    with (root / "runs.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(runs[0]))
         w.writeheader()
         w.writerows(runs)
