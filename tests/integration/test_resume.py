@@ -8,7 +8,7 @@ from pcdkd.data.build import build_data
 from pcdkd.experiments.runner import run_dir, run_many
 from pcdkd.experiments.suite import PROFILES, build_specs
 from pcdkd.models import get_model
-from pcdkd.train.trainer import Paused, train
+from pcdkd.train.trainer import Paused, _loader, _rng_state, _set_rng_state, train
 
 pytestmark = pytest.mark.integration
 SMOKE, SMOKE_TEACHERS = build_specs("smoke")
@@ -88,3 +88,52 @@ def test_closing_window_starts_nothing(tmp_path):
         SMOKE[:1], SMOKE_TEACHERS, tmp_path, device="cpu", log=quiet, should_stop=lambda s: True
     )
     assert status["paused"] == 1 and not any(tmp_path.rglob("*.pt"))
+
+
+def _tiny(method="pcd"):
+    spec = next(s for s in SMOKE if s["method"] == method and len(s["teacher_keys"]) == 1)
+    spec = dict(spec, epochs=2, batch_size=256, log_every=1)
+    data = build_data(spec, synthetic=True)
+    torch.manual_seed(0)
+    teacher = [get_model(SMOKE_TEACHERS[spec["teacher_keys"][0]]["arch"], data["classes"])]
+    return spec, data, teacher
+
+
+ACCEL = (
+    "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else None
+)
+
+
+@pytest.mark.skipif(ACCEL is None, reason="needs a GPU (cuda or mps)")
+def test_rng_state_restores_after_loading_onto_the_gpu(tmp_path):
+    """On the GPU the checkpoint is loaded with map_location=device, which moves the RNG states
+    off the CPU; restoring them must still work (failed on the workstation, 2026-11-12)."""
+    spec, data, _ = _tiny()
+    train_dl = _loader(data["train"], 64, True, 0, 0, "cpu")
+    torch.save({"rng": _rng_state(train_dl)}, tmp_path / "c.pt")
+    st = torch.load(tmp_path / "c.pt", map_location=ACCEL, weights_only=False)
+    assert st["rng"]["torch"].device.type == ACCEL
+    _set_rng_state(st["rng"], train_dl)
+
+
+def test_a_busy_checkpoint_file_does_not_stop_training(tmp_path, monkeypatch):
+    """Windows refuses to replace a file the Drive uploader is reading; keep training."""
+    import pcdkd.train.trainer as trainer
+
+    def busy(obj, path):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(trainer, "save_torch", busy)
+    spec, data, teacher = _tiny()
+    msgs = []
+    model, res = train(
+        spec,
+        data,
+        teacher,
+        device="cpu",
+        log=msgs.append,
+        checkpoint=tmp_path / "checkpoint.pt",
+        ckpt_every=1,
+    )
+    assert [e["epoch"] for e in res["epochs"]] == [0, 1]
+    assert any("checkpoint not updated" in m for m in msgs)

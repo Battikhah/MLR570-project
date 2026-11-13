@@ -29,7 +29,7 @@ from pcdkd.data.regimes import class_groups
 from pcdkd.experiments.suite import PROFILES
 from pcdkd.models import get_model
 from pcdkd.train.trainer import Paused, _loader, device_auto, evaluate, train
-from pcdkd.utils.atomic import replace_with_retry, save_torch
+from pcdkd.utils.atomic import remove, replace_with_retry, save_torch
 
 
 def _git_commit():
@@ -117,7 +117,7 @@ def run_teacher(
     ckpt.parent.mkdir(parents=True, exist_ok=True)
     save_torch(model.state_dict(), ckpt)
     _write_json(meta, {"spec": tspec, "val": val, "test": test, "train": res, "env": _env(device)})
-    resume.unlink(missing_ok=True)
+    remove(resume)
     log(f"[teacher {tspec['condition']}] test top1={test['top1']:.4f}")
 
 
@@ -192,8 +192,8 @@ def run_student(
             "env": _env(device),
         },
     )
-    (rdir / "error.json").unlink(missing_ok=True)
-    (rdir / "checkpoint.pt").unlink(missing_ok=True)
+    remove(rdir / "error.json")
+    remove(rdir / "checkpoint.pt")
     log(f"[{spec['id']}] val={val['top1']:.4f} test={test['top1']:.4f}")
     return "done"
 
@@ -270,8 +270,11 @@ def _claim(path):
 
 
 def clear_claims(out, profile):
-    """Drop every claim (run once before starting workers; claims of a dead session are stale)."""
+    """Drop every claim, and every teacher failure so it is retried (run once before starting
+    workers; claims of a dead session are stale). Returns the number of claims dropped."""
     base = Path(out) / profile
+    for p in (base / "teachers").glob("*.error.json"):
+        p.unlink(missing_ok=True)
     n = 0
     for p in [*base.rglob("claim"), *base.rglob("*.claim")]:
         p.unlink(missing_ok=True)

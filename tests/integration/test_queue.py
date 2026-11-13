@@ -105,3 +105,15 @@ def test_closing_window_stops_the_queue(tmp_path):
         students, teachers, tmp_path, device="cpu", log=quiet, should_stop=lambda s: True
     )
     assert status["paused"] == 1 and not any(tmp_path.rglob("*.pt"))
+
+
+def test_clearing_claims_retries_failed_teachers(tmp_path):
+    students, teachers = _cheap(1)
+    (key,) = teachers
+    err = teacher_paths(tmp_path, "smoke", key)[0].with_suffix(".error.json")
+    err.parent.mkdir(parents=True)
+    err.write_text("{}")
+    clear_claims(tmp_path, "smoke")
+    assert not err.exists()
+    status = run_queue(students, teachers, tmp_path, device="cpu", log=quiet)
+    assert status["failed"] == 0 and status["done"] == 2

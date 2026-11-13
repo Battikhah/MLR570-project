@@ -73,13 +73,14 @@ def _rng_state(train_dl):
 
 
 def _set_rng_state(state, train_dl):
-    torch.set_rng_state(state["torch"])
+    # .cpu(): the checkpoint is loaded with map_location=device, which moves these to the GPU
+    torch.set_rng_state(state["torch"].cpu())
     if state["cuda"] is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(state["cuda"])
+        torch.cuda.set_rng_state_all([s.cpu() for s in state["cuda"]])
     np.random.set_state(state["numpy"])  # noqa: NPY002
     random.setstate(state["python"])
     if state["loader"] is not None:
-        train_dl.generator.set_state(state["loader"])
+        train_dl.generator.set_state(state["loader"].cpu())
 
 
 def device_auto():
@@ -312,6 +313,12 @@ def train(
         log(f"[{spec['id']}] resumed from {checkpoint} at epoch {start_epoch}")
 
     def save(next_epoch):
+        try:
+            _save_checkpoint(next_epoch)
+        except PermissionError as exc:  # Windows: the uploader is reading the old checkpoint
+            log(f"[{spec['id']}] checkpoint not updated ({exc}); keeping the previous one")
+
+    def _save_checkpoint(next_epoch):
         save_torch(
             {
                 "model": model.state_dict(),
