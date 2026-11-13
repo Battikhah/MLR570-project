@@ -40,6 +40,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $env:PYTHONUTF8 = "1"   # Windows defaults to cp1252, which cannot write the Greek letters in reports and logs
+$env:PYTHONUNBUFFERED = "1"   # worker logs are written line by line (the dashboard reads them live)
 
 # --- where things live (all local, wiped by DeepFreeze; Google Drive holds the copy) ---------------
 $Work  = Join-Path $env:LOCALAPPDATA "pcd-suite"
@@ -130,6 +131,17 @@ $py = @("run", "--no-sync", "python", "scripts/run_suite.py")
 uv run --no-sync python scripts/run_suite.py clear-claims @select
 $args_ = $py + @("run") + $select + @("--queue", "--window", "aus", "--workers", $Workers,
                                       "--data-root", "`"$Data`"")
+# Live dashboard (read-only) at http://127.0.0.1:8765; if it fails, the workers still run.
+$dashboard = $null
+try {
+  $dashboard = Start-Process -PassThru -WindowStyle Hidden -FilePath "uv" `
+    -ArgumentList @("run", "--no-sync", "python", "scripts/dashboard.py", "--out", "`"$Out`"",
+                    "--logs", "`"$Logs`"", "--profile", $Profile) `
+    -RedirectStandardOutput (Join-Path $Logs "dashboard-$stamp.out") `
+    -RedirectStandardError (Join-Path $Logs "dashboard-$stamp.err")
+  Write-Host "Dashboard: http://127.0.0.1:8765 (opens in the browser in a few seconds)"
+  Start-Job { Start-Sleep -Seconds 15; Start-Process "http://127.0.0.1:8765" } | Out-Null
+} catch { Write-Host "Dashboard did not start ($_); the runs continue without it." }
 $running = foreach ($i in 1..$Procs) {
   Start-Process -PassThru -NoNewWindow -FilePath "uv" -ArgumentList $args_ `
     -RedirectStandardOutput (Join-Path $Logs "worker$i-$stamp.log") `
@@ -143,5 +155,6 @@ while ($running | Where-Object { -not $_.HasExited }) {
   Push-Drive
 }
 Write-Host "Session finished. Results: Google Drive My Drive/pcd-suite/outputs"
+if ($dashboard) { taskkill /T /F /PID $dashboard.Id 2>$null | Out-Null }   # uv and its python child
 Stop-Transcript | Out-Null
 Push-Drive

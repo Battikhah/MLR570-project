@@ -162,3 +162,17 @@ pre-registered statistics in `refine-logs/EXPERIMENT_PLAN.md` (Holm correction, 
 - **Teachers:** trained here, so the absolute numbers are not comparable with mdistiller's tables.
 - **Scale:** CIFAR only. Robust distillation (C1) and DHO/ImageNet (C3) are out of scope because of compute and data access.
 - **Precision:** no mixed precision, because the Gram matrix is computed in float64 on the CPU.
+
+### Live dashboard
+
+On the workstation, `run_weekend.ps1` starts the read-only dashboard and opens
+[http://127.0.0.1:8765](http://127.0.0.1:8765) in the RDP browser. It stops with the session;
+if it fails to start, the experiment workers continue. For a Drive download on a Mac, run from
+the repository root:
+
+```bash
+uv run --no-sync python scripts/dashboard.py --out /path/to/outputs --logs /path/to/logs --profile screen
+```
+
+`--out` is the folder that contains `screen/`. Then open `http://127.0.0.1:8765`. The dashboard scans output files read-only and does not load
+checkpoint files.

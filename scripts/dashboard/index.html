@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCD suite monitor</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa; --surface: #ffffff; --fg: #1d2125; --muted: #5b636b; --line: #d9dcdf;
+  --accent: #1f5f99; --ok: #1d6b3a; --bad: #a3271c; --warn: #8a5a00; --bar: #e8eaec;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15181b; --surface: #1c2024; --fg: #e8eaec; --muted: #a3abb3; --line: #343a40;
+          --accent: #7fb3e6; --ok: #6cc28b; --bad: #f08a7e; --warn: #e2b04a; --bar: #2a2f34; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header, main { max-width: 1400px; margin: 0 auto; padding: 0 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; padding-top: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 28px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 13px; margin: 16px 0 6px; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+#fresh.stale { color: var(--bad); font-weight: 600; }
+.answer { font-size: 15px; margin: 12px 0 0; padding: 10px 12px; background: var(--surface);
+          border: 1px solid var(--line); border-left: 3px solid var(--accent); }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; }
+.stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
+.card .id { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.bar { height: 6px; background: var(--bar); border-radius: 3px; margin: 6px 0; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; }
+figcaption { font-size: 12px; color: var(--muted); }
+svg.chart { width: 100%; height: 120px; display: block; }
+svg.spark { width: 100%; height: 36px; display: block; }
+svg text { fill: var(--muted); font-size: 10px; }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--bg); position: sticky; top: 0; }
+td.l, th.l { text-align: left; }
+tr.best td { font-weight: 600; }
+button.link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0;
+              cursor: pointer; text-decoration: underline; }
+button.link:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; margin: 6px 0; }
+summary { cursor: pointer; }
+pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; margin: 8px 0 0; }
+dialog { width: min(900px, 94vw); background: var(--surface); color: var(--fg);
+         border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+.empty { color: var(--muted); padding: 8px 0; }
+footer { max-width: 1400px; margin: 32px auto; padding: 0 16px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PCD suite monitor</h1>
+  <span id="fresh" class="muted" role="status" aria-live="polite">Loading…</span>
+</header>
+<main>
+  <p id="answer" class="answer">Reading the outputs folder…</p>
+
+  <h2 id="h-status">Status</h2>
+  <div id="stats" class="stats" aria-labelledby="h-status"></div>
+
+  <h2 id="h-running">Running now</h2>
+  <div id="running" class="cards"></div>
+
+  <h2>Charts</h2>
+  <div class="charts">
+    <figure><figcaption>GPU utilisation, last hour (%)</figcaption><div id="c-gpu"></div></figure>
+    <figure><figcaption>GPU memory used, last hour (GB)</figcaption><div id="c-vram"></div></figure>
+    <figure><figcaption>Finished student runs (cumulative)</figcaption><div id="c-done"></div></figure>
+  </div>
+
+  <h2>Queue by family <span class="muted">(priority order; forecast assumes the current number of workers)</span></h2>
+  <div class="wrap" id="families"></div>
+  <h3>Next in the queue</h3>
+  <div class="wrap" id="next"></div>
+
+  <h2>Teachers</h2>
+  <div class="wrap" id="teachers"></div>
+
+  <h2>Failures</h2>
+  <div id="failures"></div>
+  <h3>Recent worker events</h3>
+  <div class="wrap" id="events"></div>
+
+  <h2>Early results <span class="muted">(screen profile: 60 epochs, mostly 1 seed. Leads, not findings)</span></h2>
+  <div id="results"></div>
+</main>
+<footer>Read-only. Refreshes every 15 s. Times are UAE (GST, UTC+4).</footer>
+
+<dialog id="detail" aria-labelledby="d-title">
+  <form method="dialog" style="float:right"><button class="link">Close</button></form>
+  <h2 id="d-title" style="margin-top:0"></h2>
+  <div id="d-body"></div>
+</dialog>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const pct = (x, d = 1) => (x == null ? "—" : (100 * x).toFixed(d));
+const num = (x, d = 2) => (x == null || !isFinite(x) ? "—" : Number(x).toFixed(d));
+const TZ = {timeZone: "Asia/Dubai"};
+const clock = (t) => (t == null ? "—" : new Date(t * 1000).toLocaleString("en-GB", {...TZ, weekday: "short", hour: "2-digit", minute: "2-digit"}));
+function dur(s) {
+  if (s == null || !isFinite(s)) return "—";
+  s = Math.max(0, Math.round(s));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m` : `${s}s`;
+}
+const table = (head, rows, empty) => rows.length
+  ? `<table><thead><tr>${head.map((h, i) => `<th scope="col"${i === 0 ? ' class="l"' : ""}>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`
+  : `<p class="empty">${empty}</p>`;
+
+// Line chart: series = [{values: [[x, y], ...]}]; axis labels at the extremes.
+function chart(series, {cls = "chart", yMin = null, yMax = null, fmtY = (v) => num(v, 0), fmtX = null} = {}) {
+  const pts = series.flatMap((s) => s.values);
+  if (pts.length < 2) return '<p class="empty">Not enough data yet.</p>';
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]).filter((y) => y != null && isFinite(y));
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = yMin ?? Math.min(...ys), y1 = Math.max(yMax ?? -Infinity, ...ys);
+  const W = 300, H = cls === "spark" ? 36 : 110, L = cls === "spark" ? 0 : 30, B = cls === "spark" ? 0 : 14;
+  const sx = (x) => L + ((x - x0) / (x1 - x0 || 1)) * (W - L - 2);
+  const sy = (y) => 2 + (1 - (y - y0) / (y1 - y0 || 1)) * (H - B - 4);
+  const lines = series.map((s, i) => {
+    const d = s.values.filter((p) => p[1] != null && isFinite(p[1])).map((p) => `${sx(p[0]).toFixed(1)},${sy(p[1]).toFixed(1)}`).join(" ");
+    return `<polyline fill="none" stroke="currentColor" stroke-width="1.5" ${i ? 'stroke-dasharray="4 3"' : ""} points="${d}"/>`;
+  }).join("");
+  const axes = cls === "spark" ? "" :
+    `<text x="0" y="10">${esc(fmtY(y1))}</text><text x="0" y="${H - B}">${esc(fmtY(y0))}</text>` +
+    (fmtX ? `<text x="${L}" y="${H}">${esc(fmtX(x0))}</text><text x="${W}" y="${H}" text-anchor="end">${esc(fmtX(x1))}</text>` : "");
+  return `<svg class="${cls}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="chart" style="color:var(--accent)">${axes}${lines}</svg>`;
+}
+
+function renderAnswer(s) {
+  const f = s.forecast, c = s.counts, left = s.stop - s.now;
+  if (!f.remaining) return `<b>The whole queue is finished.</b>`;
+  const share = f.by_stop / f.remaining;
+  let txt = `<b>${dur(left)} left before the runs stop (${clock(s.stop)}).</b> At the measured pace with ${s.lanes} worker${s.lanes > 1 ? "s" : ""}, about <b>${f.by_stop} of the ${f.remaining} remaining tasks</b> (${pct(share, 0)}%) finish in time.`;
+  if (f.seed0_end) txt += f.seed0_end <= s.stop
+    ? ` Seed 0 of every family finishes around ${clock(f.seed0_end)}.`
+    : ` Seed 0 of every family would need until ${clock(f.seed0_end)}, after the stop.`;
+  if (f.first_miss) txt += ` The first task that will not make it is in <b>${esc(f.first_miss.family)}</b>.`;
+  if (c.failed) txt += ` <span class="bad">${c.failed} failure${c.failed > 1 ? "s" : ""}, see below.</span>`;
+  const dead = s.workers.filter((w) => !w.alive).length;
+  if (s.workers.length && dead) txt += ` <span class="bad">${dead} worker log${dead > 1 ? "s have" : " has"} not changed for over 3 minutes.</span>`;
+  return txt;
+}
+
+function renderStats(s) {
+  const g = s.gpu.at(-1), c = s.counts, t = s.throughput;
+  const alive = s.workers.filter((w) => w.alive).length;
+  const items = [
+    [dur(s.stop - s.now), `until runs stop (${clock(s.stop)})`],
+    [`${alive}/${s.workers.length || 0}`, "workers writing logs (3 min)", alive < s.workers.length ? "bad" : ""],
+    [g ? `${g.util.toFixed(0)}%` : "—", g ? `GPU · ${g.temp.toFixed(0)}°C · ${g.power.toFixed(0)} W` : "no GPU telemetry"],
+    [g ? `${(g.mem / 1024).toFixed(1)} / ${(g.mem_total / 1024).toFixed(0)} GB` : "—", "GPU memory"],
+    [s.ram ? `${(s.ram.used / 2 ** 30).toFixed(1)} / ${(s.ram.total / 2 ** 30).toFixed(0)} GB` : "—", "RAM", s.ram && s.ram.used / s.ram.total > 0.85 ? "bad" : ""],
+    [`${c.done}`, `student runs done (of ${c.total - c.teachers})`],
+    [`${c.running}`, "running now"],
+    [`${c.failed}`, "failures", c.failed ? "bad" : ""],
+    [`${c.teachers_done}/${c.teachers}`, "teachers trained"],
+    [t.recent_per_hour ? t.recent_per_hour.toFixed(0) : "—", "epochs/hour, last 2 h"],
+    [s.last_result ? dur(s.now - s.last_result) + " ago" : "—", "last finished run"],
+  ];
+  return items.map(([v, l, cls]) => `<div class="stat"><b class="${cls || ""}">${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+}
+
+function renderRunning(s) {
+  if (!s.active.length) return `<p class="empty">Nothing is training right now${s.workers.length ? "" : " (no worker logs found)"}.</p>`;
+  return s.active.map((a) => {
+    const ce = a.curve.map((p) => [p.epoch, p.train_ce]), kd = a.curve.map((p) => [p.epoch, p.train_kd]);
+    const series = [{values: ce}]; if (kd.some((p) => p[1] != null)) series.push({values: kd});
+    return `<div class="card"><div class="id">${esc(a.id)}</div>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${a.epochs}" aria-valuenow="${a.epoch}"><i style="width:${(100 * a.epoch / a.epochs).toFixed(1)}%"></i></div>
+      <div>epoch ${a.epoch}/${a.epochs} · ${num(a.sec_per_epoch, 1)} s/epoch · done ~${clock(a.eta)}</div>
+      <div class="muted">${esc(a.worker)} · log ${dur(a.log_age)} old · train CE${series.length > 1 ? " (solid) and KD (dashed)" : ""}</div>
+      ${chart(series, {cls: "spark"})}</div>`;
+  }).join("");
+}
+
+function renderCharts(s) {
+  const fx = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", {...TZ, hour: "2-digit", minute: "2-digit"});
+  const fd = (t) => clock(t);
+  $("c-gpu").innerHTML = s.gpu.length ? chart([{values: s.gpu.map((g) => [g.t, g.util])}], {yMin: 0, yMax: 100, fmtX: fx}) : '<p class="empty">No GPU telemetry (nvidia-smi not found).</p>';
+  $("c-vram").innerHTML = s.gpu.length ? chart([{values: s.gpu.map((g) => [g.t, g.mem / 1024])}], {yMin: 0, fmtY: (v) => num(v, 1), fmtX: fx}) : '<p class="empty">No GPU telemetry.</p>';
+  $("c-done").innerHTML = chart([{values: s.timeline.map((p) => [p.t, p.n])}], {yMin: 0, fmtX: fd});
+}
+
+function renderFamilies(s) {
+  const rows = s.families.map((f) => `<tr><td>${esc(f.family)}</td><td>${f.tier}</td>
+    <td>${f.done}/${f.total}</td><td>${f.seed0_done}/${f.seed0_total}</td><td>${f.running || ""}</td>
+    <td class="${f.failed ? "bad" : ""}">${f.failed || ""}</td><td class="${f.blocked ? "warn" : ""}">${f.blocked || ""}</td>
+    <td>${f.left || ""}</td><td>${f.done === f.total ? "all done" : `${f.by_stop}/${f.total - f.done - f.running}`}</td><td>${f.done === f.total ? "" : num(f.gpu_hours_left, 1)}</td></tr>`);
+  $("families").innerHTML = table(["Family", "Tier", "Done", "Seed 0 done", "Running", "Failed", "Waiting on failed teacher", "Not started", "Will finish by stop", "Hours left"], rows, "No queue.");
+  $("next").innerHTML = table(["Task", "Projected finish", "Before stop?"],
+    s.forecast.next.map((n) => `<tr><td>${esc(n.id)}</td><td>${clock(n.finish)}</td><td class="${n.by_stop ? "ok" : "bad"}">${n.by_stop ? "yes" : "no"}</td></tr>`), "Nothing left.");
+}
+
+function renderTeachers(s) {
+  const label = {done: "done", failed: "FAILED", training: "training", "not started": "not started"};
+  $("teachers").innerHTML = table(["Teacher", "Architecture", "Status", "Test top-1 (%)"],
+    s.teachers.map((t) => `<tr><td>${esc(t.key)}</td><td>${esc(t.arch)}</td>
+      <td class="${t.status === "failed" ? "bad" : t.status === "done" ? "ok" : ""}">${label[t.status]}${t.error ? " · " + esc(t.error) : ""}</td><td>${pct(t.test)}</td></tr>`), "No teachers in this profile.");
+}
+
+function renderFailures(s) {
+  $("failures").innerHTML = s.failures.length
+    ? s.failures.map((f) => `<details><summary><span class="bad">${esc(f.id)}</span> · ${esc(f.error)} · ${clock(f.time)}</summary><pre>${esc(f.traceback)}</pre></details>`).join("")
+    : '<p class="empty ok">No failures.</p>';
+  if (s.counts.skipped_lines) $("failures").insertAdjacentHTML("beforeend", `<p class="warn">${s.counts.skipped_lines} runs were skipped this session because their teacher had failed. They are retried at the next start.</p>`);
+  $("events").innerHTML = table(["Worker", "Event"], s.events.slice().reverse().map((e) => `<tr><td>${esc(e.worker)}</td><td class="l">${esc(e.kind)} ${esc(e.id || "")} ${esc(e.msg || "")}</td></tr>`), "No events this session.");
+}
+
+function renderResults(s) {
+  if (!s.results.length) { $("results").innerHTML = '<p class="empty">No finished runs yet.</p>'; return; }
+  const order = Object.fromEntries(s.families.map((f, i) => [f.family, i]));
+  const groups = {};
+  for (const r of s.results) (groups[`${r.family} · ${r.condition}`] ??= {fam: r.family, rows: []}).rows.push(r);
+  const keys = Object.keys(groups).sort((a, b) => (order[groups[a].fam] ?? 99) - (order[groups[b].fam] ?? 99) || a.localeCompare(b));
+  $("results").innerHTML = keys.map((k) => {
+    const rows = groups[k].rows;
+    const mean = (arm) => { const v = rows.filter((r) => r.arm === arm).map((r) => r.test); return v.length ? v.reduce((a, b) => a + b) / v.length : null; };
+    const ce = mean("ce"), best = Math.max(...rows.map((r) => r.test ?? -1));
+    rows.sort((a, b) => (b.test ?? -1) - (a.test ?? -1));
+    const body = rows.map((r) => {
+      const isBest = r.test === best, d = r.diag || {};
+      return `<tr class="${isBest ? "best" : ""}"><td><button class="link" data-run="${esc(r.id)}">${esc(r.arm)}</button>${isBest ? " ★ best" : ""}</td>
+        <td>${r.seed}</td><td>${pct(r.test, 2)}</td><td class="${ce == null || r.arm === "ce" ? "" : r.test - ce >= 0 ? "ok" : "bad"}">${ce == null || r.arm === "ce" ? "" : (r.test - ce >= 0 ? "+" : "") + num(100 * (r.test - ce))}</td>
+        <td>${pct(r.val, 2)}</td><td>${num(r.ece, 3)}</td><td>${num(d.cos_raw)}</td><td>${d.active_set_0 == null ? "" : pct(d.active_set_0, 0)}</td><td>${num(d.lambda_eff)}</td><td>${dur(r.seconds)}</td></tr>`;
+    });
+    return `<h3>${esc(k)}</h3><div class="wrap">${table(["Arm", "Seed", "Test top-1 (%)", "Δ vs CE (pp)", "Val top-1 (%)", "ECE", "cos(g_CE, g_KD)", "PCD active (%)", "λ_eff", "Train time"], body, "")}</div>`;
+  }).join("");
+}
+
+async function showRun(id) {
+  $("d-title").textContent = id;
+  $("d-body").innerHTML = '<p class="empty">Loading…</p>';
+  $("detail").showModal();
+  try {
+    const r = await (await fetch("/api/run?id=" + encodeURIComponent(id))).json();
+    if (r.error) throw new Error(r.error);
+    const ep = r.epochs || [];
+    const val = ep.filter((e) => e.val_top1 != null).map((e) => [e.epoch, 100 * e.val_top1]);
+    const ts = r.timeseries || [];
+    $("d-body").innerHTML = `
+      <p>Test top-1 ${pct(r.test.top1, 2)}% · top-5 ${pct(r.test.top5, 2)}% · NLL ${num(r.test.nll, 3)} · ECE ${num(r.test.ece, 3)}${r.test.teacher_agreement != null ? ` · agrees with teacher ${pct(r.test.teacher_agreement, 1)}%` : ""}</p>
+      <div class="charts">
+        <figure><figcaption>Train CE (solid) and KD (dashed) by epoch</figcaption>${chart([{values: ep.map((e) => [e.epoch, e.train_ce])}, {values: ep.map((e) => [e.epoch, e.train_kd])}])}</figure>
+        <figure><figcaption>Validation top-1 (%) by epoch</figcaption>${chart([{values: val}], {fmtY: (v) => num(v, 1)})}</figure>
+        <figure><figcaption>cos(g_CE, g_KD) by step</figcaption>${chart([{values: ts.map((x) => [x.step, x.cos_raw])}], {fmtY: (v) => num(v, 2)})}</figure>
+        <figure><figcaption>λ_eff by step</figcaption>${chart([{values: ts.map((x) => [x.step, x.lambda_eff])}], {yMin: 0, fmtY: (v) => num(v, 2)})}</figure>
+      </div>`;
+  } catch (e) {
+    $("d-body").innerHTML = `<p class="bad">Could not load this run: ${esc(e.message)}</p>`;
+  }
+}
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-run]"); if (b) showRun(b.dataset.run); });
+
+let lastOk = 0;
+async function poll() {
+  try {
+    const res = await fetch("/api/state", {cache: "no-store"});
+    const s = await res.json();
+    if (!res.ok) throw new Error(s.error || res.status);
+    $("answer").innerHTML = renderAnswer(s);
+    $("stats").innerHTML = renderStats(s);
+    $("running").innerHTML = renderRunning(s);
+    renderCharts(s); renderFamilies(s); renderTeachers(s); renderFailures(s); renderResults(s);
+    lastOk = Date.now();
+  } catch (e) {
+    $("fresh").textContent = `Update failed: ${e.message}`;
+    $("fresh").classList.add("stale");
+  }
+}
+setInterval(() => {
+  if (!lastOk) return;
+  const age = (Date.now() - lastOk) / 1000;
+  $("fresh").textContent = age > 45 ? `Server not answering · last update ${dur(age)} ago` : `Updated ${Math.round(age)} s ago`;
+  $("fresh").classList.toggle("stale", age > 45);
+}, 1000);
+poll(); setInterval(poll, 15000);
+</script>
+</body>
+</html>
