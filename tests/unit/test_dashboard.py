@@ -61,7 +61,11 @@ def _tree(tmp_path):
         "train": {
             "train_seconds": 20.0,
             "epochs": [{"epoch": 0, "train_ce": 2.0}],
-            "diagnostics": {"numeric": {"cos_raw": {"mean": 0.4}}},
+            "diagnostics": {
+                "steps": 10,
+                "numeric": {"cos_raw": {"mean": 0.4}, "active_set_0": {"count": 4, "mean": 1.0}},
+                "fractions": {"active": 0.4},
+            },
             "timeseries": [{"step": 0, "cos_raw": 0.4}],
         },
     }
@@ -91,7 +95,7 @@ def test_scan_of_a_small_tree(tmp_path):
     out, logs, done, failed, running, key = _tree(tmp_path)
     s = Scanner(out, logs, "smoke").scan()
     assert s["counts"]["done"] == 1 and s["results"][0]["test"] == 0.55
-    assert s["results"][0]["diag"] == {"cos_raw": 0.4}
+    assert s["results"][0]["diag"] == {"cos_raw": 0.4, "active_rate": 0.4}
     assert [x["id"] for x in s["failures"]] == [failed["id"]]
     assert [w["log"] for w in s["workers"]] == ["worker1-20261113-1700.log"]  # newest session
     (a,) = s["active"]

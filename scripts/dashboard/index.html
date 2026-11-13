@@ -240,9 +240,9 @@ function renderResults(s) {
       const isBest = r.test === best, d = r.diag || {};
       return `<tr class="${isBest ? "best" : ""}"><td><button class="link" data-run="${esc(r.id)}">${esc(r.arm)}</button>${isBest ? " ★ best" : ""}</td>
         <td>${r.seed}</td><td>${pct(r.test, 2)}</td><td class="${ce == null || r.arm === "ce" ? "" : r.test - ce >= 0 ? "ok" : "bad"}">${ce == null || r.arm === "ce" ? "" : (r.test - ce >= 0 ? "+" : "") + num(100 * (r.test - ce))}</td>
-        <td>${pct(r.val, 2)}</td><td>${num(r.ece, 3)}</td><td>${num(d.cos_raw)}</td><td>${d.active_set_0 == null ? "" : pct(d.active_set_0, 0)}</td><td>${num(d.lambda_eff)}</td><td>${dur(r.seconds)}</td></tr>`;
+        <td>${pct(r.val, 2)}</td><td>${num(r.ece, 3)}</td><td>${num(d.cos_raw)}</td><td>${d.active_rate == null ? "" : pct(d.active_rate, 0)}</td><td>${num(d.lambda_eff)}</td><td>${dur(r.seconds)}</td></tr>`;
     });
-    return `<h3>${esc(k)}</h3><div class="wrap">${table(["Arm", "Seed", "Test top-1 (%)", "Δ vs CE (pp)", "Val top-1 (%)", "ECE", "cos(g_CE, g_KD)", "PCD active (%)", "λ_eff", "Train time"], body, "")}</div>`;
+    return `<h3>${esc(k)}</h3><div class="wrap">${table(["Arm", "Seed", "Test top-1 (%)", "Δ vs CE (pp)", "Val top-1 (%)", "ECE", "cos(g_CE, g_KD)", "PCD active steps (%)", "λ_eff", "Train time"], body, "")}</div>`;
   }).join("");
 }
 

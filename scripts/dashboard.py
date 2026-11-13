@@ -29,7 +29,7 @@ from pcdkd.experiments.suite import cost as work_units
 from pcdkd.experiments.window import UAE, window_close
 
 STOP_MARGIN = timedelta(minutes=20)
-DIAG = ("cos_raw", "active_set_0", "lambda_eff", "prop47_margin_actual")
+DIAG = ("cos_raw", "lambda_eff", "prop47_margin_actual")
 EPOCH_RE = re.compile(r"^\[(?P<id>[^\]]+)\] epoch (?P<e>\d+)/(?P<n>\d+) (?P<rest>.*)$")
 KV_RE = re.compile(r"(\w+)=([-+0-9.eE]+|nan|inf)")
 WORKER_LOG_RE = re.compile(r"^worker(?P<n>\d+)-(?P<stamp>\d{8}-\d{4})\.log$")
@@ -91,7 +91,8 @@ def units(spec):
 
 def compact_result(r, ts):
     s, train = r["spec"], r.get("train", {})
-    nums = (train.get("diagnostics") or {}).get("numeric", {})
+    diagnostics = train.get("diagnostics") or {}
+    nums = diagnostics.get("numeric", {})
     test = r.get("test") or {}
     return {
         "id": s["id"],
@@ -107,7 +108,15 @@ def compact_result(r, ts):
         "val": (r.get("val") or {}).get("top1"),
         "ece": test.get("ece"),
         "seconds": train.get("train_seconds"),
-        "diag": {k: nums[k]["mean"] for k in DIAG if k in nums},
+        "diag": {
+            **{k: nums[k]["mean"] for k in DIAG if k in nums},
+            # share of steps with PCD's constraint active (as in analyze_suite.py)
+            **(
+                {"active_rate": diagnostics["fractions"]["active"]}
+                if "active" in diagnostics.get("fractions", {})
+                else {}
+            ),
+        },
         "finished": ts,
     }
 
