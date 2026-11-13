@@ -46,7 +46,8 @@ def build_data(spec, root="data", synthetic=False):
     """Return a dict with train/val/test datasets, label tensors and the corruption map.
 
     ``spec`` keys used: dataset, val_size, split_seed, seed, train_fraction, imbalance,
-    label_noise, noise_kind, teacher_corruption.
+    label_noise, noise_kind, teacher_corruption. ``val_size: 0`` trains on the whole training set
+    and returns ``val`` = None.
     """
     classes, base, test_base = _bases(spec["dataset"], root, synthetic)
     labels = np.asarray(base.targets)
@@ -77,7 +78,7 @@ def build_data(spec, root="data", synthetic=False):
     return {
         "classes": classes,
         "train": Subset(IndexedDataset(base, aug), train_idx.tolist()),
-        "val": Subset(IndexedDataset(base, plain), val_idx.tolist()),
+        "val": Subset(IndexedDataset(base, plain), val_idx.tolist()) if len(val_idx) else None,
         "test": IndexedDataset(test_base, plain),
         "train_indices": train_idx,
         "train_labels": torch.as_tensor(noisy, dtype=torch.long),  # by original index

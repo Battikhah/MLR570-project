@@ -25,7 +25,7 @@ def test_queue_order_is_breadth_first_by_priority():
     assert seeds == sorted(seeds)  # every seed-0 run before any seed-1 run
     seed0 = [s["family"] for s in q if s["seed"] == 0]
     ranks = [PRIORITY.index(f) for f in seed0]
-    assert ranks == sorted(ranks) and seed0[0] == "pilot"
+    assert ranks == sorted(ranks) and seed0[0] == "lit-p1"  # the literature anchor first
     # within a family the design order is kept: one condition's arms finish together
     tc = [s["condition"] for s in q if s["family"] == "teacher-corruption" and s["seed"] == 0]
     assert tc == sorted(tc, key=tc.index)

@@ -15,7 +15,13 @@ uv sync --frozen
 uv run python scripts/fetch_cifar.py --yes            # ⛔ needs approval (CIFAR-10/100, ~324 MB)
 uv run pytest -m "not slow and not requires_data"     # all green before any GPU time
 
-# 1. Teachers (14 in total; trained once and cached under outputs/suite/<profile>/teachers/)
+# 0. lit-p1 only: CRD's published teachers (approved, 364 MB), read from <data-root>/mdistiller/
+mkdir -p data/mdistiller && curl -L -o data/mdistiller/cifar_teachers.tar \
+  https://github.com/megvii-research/mdistiller/releases/download/checkpoints/cifar_teachers.tar
+tar -xf data/mdistiller/cifar_teachers.tar -C data/mdistiller   # SHA-256 below
+
+# 1. Teachers (15 in total; trained once, or for lit-p1 loaded and evaluated, and cached under
+#    outputs/suite/<profile>/teachers/)
 uv run python scripts/run_suite.py run --profile screen --stage teachers
 
 # 2. Tier 0: pilot + MVE. Measures seconds per epoch for each arm and checks the go/no-go rule
@@ -55,7 +61,7 @@ Steps:
    `git clone https://github.com/Battikhah/MLR570-project "$env:LOCALAPPDATA\pcd-suite\code"` (sign in
    to GitHub when Git asks; the repo is private). From `scripts\workstation` in that clone, test access
    without training: `powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly`. It signs rclone in to Google (browser), restores earlier results from Drive, pulls,
-   checks that CUDA works, runs the CPU tests, and downloads CIFAR (⛔ the first CIFAR download needs approval).
+   checks that CUDA works, runs the CPU tests, downloads CIFAR (⛔ the first CIFAR download needs approval), and downloads and extracts CRD's teachers into `<-Data>\mdistiller\` if they are not there yet (size and SHA-256 checked; with `-Data U:\pcd-data`, which survives DeepFreeze, this happens once).
 3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
    claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share one priority queue:
    seed 0 of every family before any second seed, families ordered by `suite.PRIORITY` (most
@@ -67,17 +73,18 @@ Steps:
 
 **Profiles** change the schedule only; the design is the same:
 - `full`: 240 epochs, the family's seed count.
-- `screen`: 60 epochs, at most 2 seeds.
+- `screen`: 60 epochs, at most 2 seeds. `lit-p1` keeps 240 epochs and 1 seed in every profile except smoke, because its only purpose is to match the published protocol.
 - `smoke`: synthetic data, 2 steps, on CPU. The tests use this profile.
 
 ## Protocol shared by every run
 
-- **Data:** CIFAR-100 (CIFAR-10 only for the MVE), 45k train / 5k stratified validation (`split_seed` 0). The test set is evaluated once, at the end. The analysis selects configurations on validation only.
+- **Data:** CIFAR-100 (CIFAR-10 only for the MVE), 45k train / 5k stratified validation (`split_seed` 0); `lit-p1` trains on all 50k (`val_size: 0`, no validation set, so its arms run at their default settings with no grid). The test set is evaluated once, at the end. The analysis selects configurations on validation only.
 - **Optimiser and schedule** (mdistiller CIFAR-100 protocol): SGD, momentum 0.9, weight decay 5e-4, lr 0.05, batch 64, ×0.1 at 62.5 / 75 / 87.5% of training, KD temperature T = 4.
 - **Pairs:**
   - P0: ResNet-32 → ResNet-8, the submitted proposal's pair; cheap.
   - P1: ResNet32x4 → ResNet8x4, the mdistiller / DTO-KD reference pair.
-- **Teachers:** we train our own with CE, seed 0. The mdistiller checkpoints are not used, so absolute numbers will not match the published tables.
+  - P1-md (`lit-p1` only): the same pair in the CRD/RepDistiller architecture (`md_resnet32x4` → `md_resnet8x4`: option-B 1x1-conv shortcuts, RepDistiller's init), so CRD's checkpoint loads.
+- **Teachers:** `lit-p1` uses CRD's published ResNet32x4 (see [CRD teachers](#crd-teachers-lit-p1)). Every other family trains its own teacher with CE, seed 0, on the same 45k split. Those families need it: the noisy-label, long-tail and low-data conditions need teachers trained on that data, the teacher-corruption map is applied to our teacher's outputs, and our 5k validation images are inside CRD's training set, so a CRD teacher would leak them. Absolute numbers outside `lit-p1` therefore do not match the published tables.
 - **Seeds:** a seed fixes initialisation, data order and the teacher-corruption map, and is identical across arms. Every comparison is therefore paired.
 - **Fixed per dataset:** label noise, the long-tail subsample and the low-data subsample are set by `split_seed`. Teacher and student see the same noisy labels.
 - **Logged every 50 steps:** cos(g_CE, g_KD); the EMA-normalised inner product; PCD active rate, μ and the actual Prop. 4.7 margin; λ_eff; alignment of the update with each gradient; per-objective losses; gate acceptance (overall and on corrupted samples); and *shadow cosines*. Shadow cosines measure how far apart the CE, PCD, NWKD, WKD and DTO-KD directions are on the same batch, computed from the 2×2 Gram matrix at no extra backward cost. Each run also gets diagnostics summarised by thirds of training.
@@ -106,6 +113,7 @@ Tier 0 runs first, then tier 1. Tiers 2–3 broaden coverage.
 
 | Tier | Family | Probe | PCD predicted to… | Basis |
 |---|---|---|---|---|
+| 0 | `lit-p1` | P1-md, CRD teacher, mdistiller protocol, 50k images, 240 epochs, 1 seed: CE, WKD 0.9, NWKD 1.0, PCD 0.5 / 1.0, PCGrad, MGDA, DTO-KD, DOT | reproduce the published KD 73.33 and DOT 75.12; place PCD on the survey's ranking pair | mdistiller tables |
 | 0 | `pilot` | P1: CE, WKD, DTO-KD, PCD(0.5) | measure cost, the c distribution, the active rate, and whether the rules differ on ≥ 10% of steps (plan §3 go/no-go) | plan rev. 2 |
 | 0 | `mve-cifar10` | ρ ∈ {0, 0.3} | show a negative shift in c and a non-trivial active rate (decision 0001, H0) | decision 0001 |
 | 1 | `core-p1`, `core-p0` | all 17 two-objective arms, clean | match or beat NWKD only if c varies within training; tie with NWKD if c is steady | Cor. 4.6; I1* |
@@ -134,15 +142,29 @@ Tier 0 runs first, then tier 1. Tiers 2–3 broaden coverage.
 
 | Profile | Student runs | Full-dataset epoch-passes | Teachers |
 |---|---|---|---|
-| screen, tiers 0–1 | 656 | 72,240 | 3 |
-| screen, all tiers | 1,392 | 150,011 | 14 |
-| full, tiers 0–1 | 1,050 | 462,480 | 3 |
-| full, all tiers | 2,004 | 864,065 | 14 |
+| screen, tiers 0–1 | 665 | 76,507 | 4 (1 pre-trained) |
+| screen, all tiers | 1,401 | 154,278 | 15 (1 pre-trained) |
+| full, tiers 0–1 | 1,059 | 466,747 | 4 (1 pre-trained) |
+| full, all tiers | 2,013 | 868,332 | 15 (1 pre-trained) |
 
-An epoch-pass is one pass over 45k images with one student backward. GPU-hours = epoch-passes × the
+From `run_suite.py list`; `lit-p1` adds 9 runs and 4,267 epoch-passes in both profiles. An epoch-pass is one pass over 45k images with one student backward (a 50k-image `lit-p1` epoch counts 50/45). GPU-hours = epoch-passes × the
 pilot's measured seconds per epoch-pass for each pair. ESTIMATE, unmeasured: at about 10 s per
 ResNet-8 epoch-pass, screen tiers 0–1 come to roughly 200 GPU-hours before running several shards
 per GPU. Run the pilot first and re-plan from its numbers.
+
+## CRD teachers (`lit-p1`)
+
+- **Archive:** `cifar_teachers.tar` from mdistiller's GitHub release `checkpoints` ([URL](https://github.com/megvii-research/mdistiller/releases/download/checkpoints/cifar_teachers.tar)), 364,390,400 bytes, SHA-256 `e7c8b2f7d449af08e1222663e845ad23ca4a2044735b980740d86a96088de52c`. Never committed (`data/` is git-ignored).
+- **Contents:** `cifar_teachers/{resnet32x4,resnet56,resnet110,ResNet50,vgg13,wrn_40_2}_vanilla/ckpt_epoch_240.pth`, each a dict `{"epoch", "model", "accuracy", "optimizer"}` with the weights under `model` (no `num_batches_tracked` buffers; PyTorch adds them on a strict load). ResNet32x4, ResNet56 and ResNet110 are wired up (`suite.CRD_TEACHERS`); VGG13, WRN-40-2 and ResNet50 use other architectures and are not.
+- **Loading:** `run_teacher` sees `pretrained: {"file": <path under --data-root>, "key": "model", ...}` in the teacher spec, loads with `weights_only=True` (the checkpoints contain numpy scalars, so exactly those numpy types are allowlisted; no full unpickling), `load_state_dict(strict=True)`, evaluates on our test split, and writes the usual `<key>.pt` / `<key>.json` with `source`, `file_sha256`, `archive_sha256`, `published_top1` and our own measured test top-1. A missing file fails with the download instructions. The smoke profile trains a stand-in on synthetic data instead.
+- **Measured test top-1 (CIFAR-100, 10k test images, our loader and normalisation):** loaded through `run_teacher` with `strict=True`, MPS, 2026-11-13.
+
+  | teacher | measured | published (CRD / mdistiller) | accuracy stored in the checkpoint |
+  |---|---|---|---|
+  | ResNet32x4 | 79.42 | 79.42 | 79.42 |
+  | ResNet56 | 72.41 | 72.34 | 72.41 |
+  | ResNet110 | 74.31 | 74.31 | 74.31 |
+- **KD loss:** `losses/kd.py` multiplies the KL term by T², as mdistiller's `kd_loss` does, and `wkd_l0.9` = 0.1 CE + 0.9 KD is mdistiller's KD config (CE weight 0.1, KD weight 0.9, T = 4).
 
 ## Analysis (`scripts/analyze_suite.py`)
 
@@ -159,7 +181,8 @@ pre-registered statistics in `refine-logs/EXPERIMENT_PLAN.md` (Holm correction, 
 
 - **DTO-KD:** the exact rule only, without its feature projection or separate heads, and no amortised variant.
 - **DOT:** reimplemented as two heavy-ball buffers on flattened gradients, not mdistiller's optimizer. Weight decay enters the task buffer.
-- **Teachers:** trained here, so the absolute numbers are not comparable with mdistiller's tables.
+- **Teachers:** trained here outside `lit-p1`, so those absolute numbers are not comparable with mdistiller's tables.
+- **`lit-p1`:** no validation set, so the analysis lists its arms without picking a best configuration ("no validation set" in the wins table) and none of its numbers may be used to tune anything.
 - **Scale:** CIFAR only. Robust distillation (C1) and DHO/ImageNet (C3) are out of scope because of compute and data access.
 - **Precision:** no mixed precision, because the Gram matrix is computed in float64 on the CPU.
 

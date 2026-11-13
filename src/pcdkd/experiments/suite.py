@@ -57,6 +57,30 @@ BASE = {
 }
 P0 = {"arch": "resnet8", "teachers": ["resnet32"]}  # the submitted proposal's pair (cheap)
 P1 = {"arch": "resnet8x4", "teachers": ["resnet32x4"]}  # mdistiller / DTO-KD reference pair
+P1_MD = {"arch": "md_resnet8x4", "teachers": ["md_resnet32x4"]}  # the same pair, CRD architecture
+
+# CRD's CIFAR-100 teachers as packaged by mdistiller (paths relative to --data-root).
+# published_top1: the CRD / mdistiller tables; run_teacher measures and records our own test top-1.
+CRD_URL = (
+    "https://github.com/megvii-research/mdistiller/releases/download/checkpoints/cifar_teachers.tar"
+)
+CRD_SHA256 = "e7c8b2f7d449af08e1222663e845ad23ca4a2044735b980740d86a96088de52c"
+CRD_TEACHERS = {
+    arch: {
+        "source": "CRD/mdistiller",
+        "url": CRD_URL,
+        "dir": "mdistiller",
+        "file": f"mdistiller/cifar_teachers/{name}_vanilla/ckpt_epoch_240.pth",
+        "key": "model",
+        "archive_sha256": CRD_SHA256,
+        "published_top1": top1,
+    }
+    for arch, name, top1 in (
+        ("md_resnet32x4", "resnet32x4", 79.42),
+        ("md_resnet56", "resnet56", 72.34),
+        ("md_resnet110", "resnet110", 74.31),
+    )
+}
 
 
 def arm(name, method, objectives=("ce", "kd"), primary="ce", group=None, **params):
@@ -199,6 +223,20 @@ SENS = (
 )
 
 FAMILIES = [
+    _family(
+        "lit-p1",
+        "Literature-matched anchor: CRD teacher, mdistiller protocol, full training set; checks "
+        "our KD/DOT against the published 73.33 / 75.12 and places PCD on the survey's ranking "
+        "pair.",
+        0,
+        1,
+        [({}, "clean")],
+        [CE, wkd(0.9), nwkd(1.0), pcd(0.5), pcd(1.0), PCGRAD, MGDA, DTO, DOT_],
+        P1_MD,
+        val_size=0,  # no val set, so every arm runs at its paper/default setting (no grid)
+        epochs=240,  # the protocol's length in every profile except smoke
+        crd_teacher=True,
+    ),
     _family(
         "pilot",
         "Go/no-go (plan §3): measured cost per arm, the CE-KD cosine distribution, PCD's "
@@ -411,8 +449,8 @@ FAMILIES = [
 FAMILY_NAMES = [f["name"] for f in FAMILIES]
 
 
-def teacher_key(dataset, arch, imbalance=1, label_noise=0.0, noise_kind="symmetric"):
-    key = f"{dataset}-{arch}"
+def teacher_key(dataset, arch, imbalance=1, label_noise=0.0, noise_kind="symmetric", crd=False):
+    key = f"{dataset}-{arch}" + ("-crd" if crd else "")
     if imbalance > 1:
         key += f"-if{imbalance}"
     if label_noise > 0:
@@ -453,12 +491,14 @@ def build_specs(profile="full", families=None, tiers=None):
                         seed=seed,
                         profile=profile,
                     )
-                    s["epochs"] = prof["epochs"]
+                    if profile == "smoke" or "epochs" not in fam["extra"]:
+                        s["epochs"] = prof["epochs"]
                     s["batch_size"] = prof.get("batch_size", s["batch_size"])
                     if s["train_fraction"] < 1:  # iteration-matched
                         s["epochs"] = max(1, round(prof["epochs"] / s["train_fraction"]))
                         s["eval_every"] = max(10, s["epochs"] // 24)
                     noisy_t = s.pop("teacher_noise", False)
+                    crd = s.pop("crd_teacher", False)
                     s["teacher_keys"] = []
                     for t in s.pop("teachers"):
                         key = teacher_key(
@@ -467,9 +507,10 @@ def build_specs(profile="full", families=None, tiers=None):
                             s["imbalance"],
                             s["label_noise"] if noisy_t else 0.0,
                             s["noise_kind"],
+                            crd,
                         )
                         s["teacher_keys"].append(key)
-                        teachers.setdefault(key, _teacher_spec(key, s, t, noisy_t, profile))
+                        teachers.setdefault(key, _teacher_spec(key, s, t, noisy_t, profile, crd))
                     s["id"] = _slug(f"{fam['name']}/{cname}/{a['arm']}/s{seed}")
                     students.append(s)
     return students, teachers
@@ -482,6 +523,7 @@ def build_specs(profile="full", families=None, tiers=None):
 # "scale, not conflict" explanation; the reference pair (core-p1) is costlier per run. Families
 # that need extra teachers (long-tail, capacity-gap, noisy teachers) or many grid points come last.
 PRIORITY = (
+    "lit-p1",  # first: anchors our numbers to the published ones
     "pilot",
     "mve-cifar10",
     "core-p0",
@@ -511,7 +553,7 @@ def queue_order(students):
     return sorted(students, key=lambda s: (s["seed"], rank[s["family"]], pos[id(s)]))
 
 
-def _teacher_spec(key, s, arch, noisy, profile):
+def _teacher_spec(key, s, arch, noisy, profile, crd=False):
     t = copy.deepcopy(BASE)
     t.update(
         kind="teacher",
@@ -531,7 +573,10 @@ def _teacher_spec(key, s, arch, noisy, profile):
         arm="ce",
         objectives=["ce"],
         teacher_keys=[],
+        val_size=s["val_size"],
     )
+    if crd and profile != "smoke":  # smoke (synthetic data) trains a stand-in instead
+        t.update(pretrained=copy.deepcopy(CRD_TEACHERS[arch]), epochs=0)
     for k in ("teachers", "params", "loss_scale"):
         t.pop(k, None)
     return t
@@ -543,8 +588,9 @@ def passes(spec):
 
 
 def cost(spec):
-    """Full-training-set epoch-passes: epochs x passes x (fraction of the training set used)."""
-    size = spec["train_fraction"]
+    """Epoch-passes over 45k images: epochs x passes x (share of the training set used; 50k/45k
+    with ``val_size: 0``)."""
+    size = spec["train_fraction"] * (50000 - spec["val_size"]) / 45000
     if spec["imbalance"] > 1:  # mean of the exponential long-tail profile over 100 classes
         size *= sum(spec["imbalance"] ** (-k / 99) for k in range(100)) / 100
     return spec["epochs"] * passes(spec) * size

@@ -1,8 +1,11 @@
 """CIFAR ResNets (6n+2); option-A shortcuts follow He et al. (2016), §4.2."""
+
 import re
 
 import torch.nn as nn
 import torch.nn.functional as F
+
+from .resnet_md import MdResNet
 
 
 class BasicBlock(nn.Module):
@@ -101,9 +104,12 @@ def resnet32(num_classes=10, shortcut_type="A"):
 
 
 def get_model(name, num_classes=10):
-    """``resnet<depth>`` (16/32/64 channels) or ``resnet<depth>x4`` (mdistiller widths)."""
-    m = re.fullmatch(r"resnet(\d+)(x4)?", name)
+    """``resnet<depth>`` (16/32/64 channels) or ``resnet<depth>x4`` (mdistiller widths), option A;
+    ``md_`` prefix: the CRD/mdistiller architecture whose published checkpoints load strictly."""
+    m = re.fullmatch(r"(md_)?resnet(\d+)(x4)?", name)
     if not m:
-        raise ValueError(f"unknown model {name!r}; expected resnet<depth> or resnet<depth>x4")
-    widths = (32, 64, 128, 256) if m.group(2) else (16, 16, 32, 64)
-    return CifarResNet(int(m.group(1)), num_classes, widths=widths)
+        raise ValueError(f"unknown model {name!r}; expected [md_]resnet<depth>[x4]")
+    widths = (32, 64, 128, 256) if m.group(3) else (16, 16, 32, 64)
+    if m.group(1):
+        return MdResNet(int(m.group(2)), num_classes, widths)
+    return CifarResNet(int(m.group(2)), num_classes, widths=widths)

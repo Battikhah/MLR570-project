@@ -111,6 +111,25 @@ if ($LASTEXITCODE -ne 0) { throw "tests failed; not starting GPU runs" }
 # --- 7. CIFAR-10/100 (skipped when already downloaded this session) ---------------------------------
 uv run --no-sync python -c "from torchvision.datasets import CIFAR10, CIFAR100; import sys; [c(sys.argv[1], train=t, download=True) for c in (CIFAR10, CIFAR100) for t in (True, False)]" $Data
 if ($LASTEXITCODE -ne 0) { throw "CIFAR download failed" }
+
+# --- 7b. CRD's pre-trained CIFAR-100 teachers (mdistiller release, for lit-p1), once per -Data -----
+# The suite reads them as mdistiller/cifar_teachers/... under --data-root, so nothing else is passed.
+$Md = Join-Path $Data "mdistiller"
+if (-not (Test-Path (Join-Path $Md "cifar_teachers\resnet32x4_vanilla\ckpt_epoch_240.pth"))) {
+  New-Item -ItemType Directory -Force $Md | Out-Null
+  $MdTar = Join-Path $Md "cifar_teachers.tar"
+  $MdSha = "E7C8B2F7D449AF08E1222663E845AD23CA4A2044735B980740D86A96088DE52C"
+  if (-not (Test-Path $MdTar) -or (Get-Item $MdTar).Length -ne 364390400) {
+    $ProgressPreference = "SilentlyContinue"   # the progress bar makes Invoke-WebRequest very slow
+    Invoke-WebRequest "https://github.com/megvii-research/mdistiller/releases/download/checkpoints/cifar_teachers.tar" -OutFile $MdTar
+    $ProgressPreference = "Continue"
+  }
+  if ((Get-Item $MdTar).Length -ne 364390400 -or (Get-FileHash $MdTar -Algorithm SHA256).Hash -ne $MdSha) {
+    Remove-Item $MdTar; throw "cifar_teachers.tar has the wrong size or SHA-256; deleted, rerun to retry."
+  }
+  tar -xf $MdTar -C $Md   # Windows 10+ ships bsdtar as tar.exe
+  if ($LASTEXITCODE -ne 0) { throw "extracting $MdTar failed" }
+}
 if ($SetupOnly) {
   Write-Host "Setup OK. Results will be copied to Google Drive: My Drive/pcd-suite (this log is there now)."
   Stop-Transcript | Out-Null; Push-Drive; exit 0

@@ -39,7 +39,7 @@ def load(root):
                 "group": s["group"],
                 "pcd": s["method"] == "pcd",
                 "seed": s["seed"],
-                "val": r["val"]["top1"],
+                "val": (r["val"] or {}).get("top1"),  # None without a val set (val_size 0)
                 "test": r["test"]["top1"],
                 "ece": r["test"]["ece"],
                 "teacher_agreement": r["test"].get("teacher_agreement"),
@@ -120,7 +120,12 @@ def report(runs):
     for r in runs:
         cells[(r["family"], r["condition"])].append(r)
     for (fam, cond), rows in sorted(cells.items()):
-        best = best_config(rows)
+        has_val = all(r["val"] is not None for r in rows)
+        if not has_val:  # nothing to select configs on; the per-cell detail lists every arm
+            wins.append(
+                f"| {fam} | {cond} | no validation set: see the per-cell detail |" + 9 * " |"
+            )
+        best = best_config(rows) if has_val else {}
         is_pcd = {g: next(iter(best[g][1].values()))["pcd"] for g in best}
         pcd = [g for g in best if is_pcd[g]]
         base = [g for g in best if not is_pcd[g]]
@@ -158,7 +163,8 @@ def report(runs):
         for r in rows:
             by_arm[r["arm"]].append(r)
         ce = np.mean([r["test"] for r in by_arm.get("ce", [])]) if "ce" in by_arm else None
-        for a, rs in sorted(by_arm.items(), key=lambda kv: -np.mean([r["val"] for r in kv[1]])):
+        order = "val" if has_val else "test"  # display order only; nothing is selected on test
+        for a, rs in sorted(by_arm.items(), key=lambda kv: -np.mean([r[order] for r in kv[1]])):
             t = [r["test"] for r in rs]
 
             def avg(k, rs=rs):

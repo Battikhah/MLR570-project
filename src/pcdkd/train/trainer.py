@@ -295,7 +295,7 @@ def train(
         nesterov=False,
     )
     train_dl = _loader(data["train"], spec["batch_size"], True, spec["seed"], workers, device)
-    val_dl = _loader(data["val"], 512, False, 0, workers, device)
+    val_dl = None if data["val"] is None else _loader(data["val"], 512, False, 0, workers, device)
     labels_all = data["train_labels"]
     need_feats = "at" in objectives
     whole, thirds = DiagnosticsAggregator(), [DiagnosticsAggregator() for _ in range(3)]
@@ -422,7 +422,9 @@ def train(
         if not all(math.isfinite(v) for k, v in entry.items() if k.startswith("train_")):
             raise FloatingPointError(f"non-finite training loss in epoch {epoch}: {entry}")
         if (epoch + 1) % spec.get("eval_every", 10) == 0 or epoch + 1 == spec["epochs"]:
-            entry["val_top1"] = evaluate(model, val_dl, data["classes"], device)["top1"]
+            entry["val_top1"] = (
+                None if val_dl is None else evaluate(model, val_dl, data["classes"], device)["top1"]
+            )
         epoch_log.append(entry)
         log(
             f"[{spec['id']}] epoch {epoch + 1}/{spec['epochs']} "

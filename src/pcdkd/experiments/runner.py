@@ -13,6 +13,7 @@ the current run saves and the sweep ends with ``paused`` in the status.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -97,28 +98,68 @@ def run_teacher(
     device = device or device_auto()
     prof = PROFILES[tspec["profile"]]
     data = build_data(tspec, data_root, synthetic=prof["synthetic"])
-    model, res = train(
-        tspec,
-        data,
-        device=device,
-        workers=workers,
-        max_steps=prof["max_steps"],
-        log=log,
-        checkpoint=resume,
-        ckpt_every=ckpt_every,
-        should_stop=should_stop,
-    )
-    test = evaluate(
-        model, _loader(data["test"], 512, False, 0, workers, device), data["classes"], device
-    )
-    val = evaluate(
-        model, _loader(data["val"], 512, False, 0, workers, device), data["classes"], device
-    )
+    pre = tspec.get("pretrained")
+    provenance = {}
+    if pre:  # published weights: evaluate and cache, no training
+        src = Path(data_root) / pre["file"]
+        if not src.exists():
+            raise FileNotFoundError(
+                f"pretrained teacher {tspec['condition']}: {src} not found; download {pre['url']} "
+                f"and extract it into {Path(data_root) / pre['dir']}"
+            )
+        model = get_model(tspec["arch"], data["classes"])
+        model.load_state_dict(_load_pretrained(src, pre["key"]), strict=True)
+        model, res = model.to(device), {}
+        with src.open("rb") as f:
+            provenance = {
+                "source": pre["source"],
+                "file": pre["file"],
+                "file_sha256": hashlib.file_digest(f, "sha256").hexdigest(),
+                "archive_sha256": pre["archive_sha256"],
+                "published_top1": pre.get("published_top1"),
+            }
+    else:
+        model, res = train(
+            tspec,
+            data,
+            device=device,
+            workers=workers,
+            max_steps=prof["max_steps"],
+            log=log,
+            checkpoint=resume,
+            ckpt_every=ckpt_every,
+            should_stop=should_stop,
+        )
+    test = _evaluate(model, data["test"], data["classes"], device, workers)
+    val = _evaluate(model, data["val"], data["classes"], device, workers)
     ckpt.parent.mkdir(parents=True, exist_ok=True)
     save_torch(model.state_dict(), ckpt)
-    _write_json(meta, {"spec": tspec, "val": val, "test": test, "train": res, "env": _env(device)})
+    _write_json(
+        meta,
+        {"spec": tspec, "val": val, "test": test, "train": res, "env": _env(device)} | provenance,
+    )
     remove(resume)
     log(f"[teacher {tspec['condition']}] test top1={test['top1']:.4f}")
+
+
+def _evaluate(model, dataset, classes, device, workers, **kw):
+    """Metrics on ``dataset``; None when there is no such split (``val_size: 0``)."""
+    if dataset is None:
+        return None
+    return evaluate(model, _loader(dataset, 512, False, 0, workers, device), classes, device, **kw)
+
+
+def _load_pretrained(path, key):
+    """The published checkpoints hold numpy scalars beside the weights. Allowlisting just those
+    numpy types keeps the load ``weights_only`` (no arbitrary unpickling)."""
+    safe = [
+        (np._core.multiarray.scalar, "numpy.core.multiarray.scalar"),  # name in numpy < 2 pickles
+        np._core.multiarray.scalar,
+        np.dtype,
+        type(np.dtype(np.float64)),
+    ]
+    with torch.serialization.safe_globals(safe):
+        return torch.load(path, map_location="cpu", weights_only=True)[key]
 
 
 def load_teacher(out, profile, key, arch, classes, device):
@@ -166,14 +207,13 @@ def run_student(
     )
     train_labels = data["clean_labels"][data["train_indices"]].numpy()
     groups = class_groups(train_labels, data["classes"]) if spec["imbalance"] > 1 else None
-    val = evaluate(
-        model, _loader(data["val"], 512, False, 0, workers, device), data["classes"], device
-    )
-    test = evaluate(
+    val = _evaluate(model, data["val"], data["classes"], device, workers)
+    test = _evaluate(
         model,
-        _loader(data["test"], 512, False, 0, workers, device),
+        data["test"],
         data["classes"],
         device,
+        workers,
         teacher=teachers[0] if teachers else None,
         groups=groups,
     )
@@ -194,7 +234,8 @@ def run_student(
     )
     remove(rdir / "error.json")
     remove(rdir / "checkpoint.pt")
-    log(f"[{spec['id']}] val={val['top1']:.4f} test={test['top1']:.4f}")
+    vtxt = f"{val['top1']:.4f}" if val else "none"
+    log(f"[{spec['id']}] val={vtxt} test={test['top1']:.4f}")
     return "done"
 
 

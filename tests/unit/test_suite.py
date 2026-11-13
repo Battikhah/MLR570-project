@@ -98,7 +98,10 @@ def test_low_data_is_iteration_matched():
 def test_profiles_scale_schedule_only():
     screen, _ = build_specs("screen")
     smoke, _ = build_specs("smoke")
-    assert {s["epochs"] for s in screen if s["train_fraction"] == 1} == {60}
+    # lit-p1 fixes the protocol's 240 epochs in every profile except smoke
+    assert {
+        s["epochs"] for s in screen if s["train_fraction"] == 1 and s["family"] != "lit-p1"
+    } == {60}
     assert {s["batch_size"] for s in screen} == {s["batch_size"] for s in STUDENTS}
     full_cells = {(s["family"], s["condition"], s["arm"]) for s in STUDENTS}
     assert {(s["family"], s["condition"], s["arm"]) for s in screen} == full_cells
@@ -110,4 +113,4 @@ def test_filters():
     s, t = build_specs("full", families=["pilot"])
     assert {x["family"] for x in s} == {"pilot"} and set(t) == {"cifar100-resnet32x4"}
     s, _ = build_specs("full", tiers=[0])
-    assert {x["family"] for x in s} == {"pilot", "mve-cifar10"}
+    assert {x["family"] for x in s} == {"lit-p1", "pilot", "mve-cifar10"}
