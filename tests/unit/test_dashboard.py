@@ -9,7 +9,7 @@ import pytest
 
 from pcdkd.experiments.runner import teacher_paths
 from pcdkd.experiments.suite import build_specs
-from scripts.dashboard import Scanner, forecast, make_server, parse_line
+from scripts.dashboard import Scanner, compact_result, forecast, make_server, parse_line
 
 
 def test_log_lines():
@@ -95,7 +95,10 @@ def test_scan_of_a_small_tree(tmp_path):
     out, logs, done, failed, running, key = _tree(tmp_path)
     s = Scanner(out, logs, "smoke").scan()
     assert s["counts"]["done"] == 1 and s["results"][0]["test"] == 0.55
-    assert s["results"][0]["diag"] == {"cos_raw": 0.4, "active_rate": 0.4}
+    assert s["results"][0]["diag"] == {"cos_raw": 0.4}  # a CE run: no PCD active rate
+    pcd = json.loads((out / "smoke" / done["id"] / "result.json").read_text())
+    pcd["spec"] = {**pcd["spec"], "method": "pcd"}
+    assert compact_result(pcd, 0)["diag"]["active_rate"] == 0.4
     assert [x["id"] for x in s["failures"]] == [failed["id"]]
     assert [w["log"] for w in s["workers"]] == ["worker1-20261113-1700.log"]  # newest session
     (a,) = s["active"]

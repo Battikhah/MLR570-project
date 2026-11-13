@@ -110,10 +110,11 @@ def compact_result(r, ts):
         "seconds": train.get("train_seconds"),
         "diag": {
             **{k: nums[k]["mean"] for k in DIAG if k in nums},
-            # share of steps with PCD's constraint active (as in analyze_suite.py)
+            # share of steps with PCD's constraint active (as in analyze_suite.py); other
+            # methods log it too, as 0, which means nothing for them
             **(
                 {"active_rate": diagnostics["fractions"]["active"]}
-                if "active" in diagnostics.get("fractions", {})
+                if s.get("method") == "pcd" and "active" in diagnostics.get("fractions", {})
                 else {}
             ),
         },
