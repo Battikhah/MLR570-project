@@ -393,6 +393,9 @@ class Scanner:
                     }
                 )
         active_ids = {a["id"] for a in active}
+        for t in teachers:  # a checkpoint alone means paused; "training" needs a live worker on it
+            if t["status"] == "training" and t["id"] not in active_ids:
+                t["status"] = "paused"
 
         # queue status and forecast
         med, fallback = cost_model(list(results.values()), teacher_meta)

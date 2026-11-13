@@ -137,3 +137,15 @@ def test_http_routes(server):
         with pytest.raises(urllib.error.HTTPError) as e:
             urllib.request.urlopen(f"{server}/api/run?id={bad}")
         assert e.value.code == 404
+
+
+def test_a_checkpointed_teacher_is_paused_unless_a_worker_is_on_it(tmp_path):
+    out, logs, *_ = _tree(tmp_path)
+    _, teachers = build_specs("smoke")
+    a, b = list(teachers)[1:3]
+    for key in (a, b):
+        pt = teacher_paths(out, "smoke", key)[0]
+        pt.with_name(pt.name.removesuffix(".pt") + ".ckpt").write_bytes(b"x")
+    (logs / "worker2-20261113-1700.log").write_text(f"[teacher/{a}] epoch 3/9 time=6\n")
+    status = {t["key"]: t["status"] for t in Scanner(out, logs, "smoke").scan()["teachers"]}
+    assert (status[a], status[b]) == ("training", "paused")

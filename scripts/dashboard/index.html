@@ -211,7 +211,7 @@ function renderFamilies(s) {
 }
 
 function renderTeachers(s) {
-  const label = {done: "done", failed: "FAILED", training: "training", "not started": "not started"};
+  const label = {done: "done", failed: "FAILED", training: "training", paused: "paused (resumes from its checkpoint)", "not started": "not started"};
   $("teachers").innerHTML = table(["Teacher", "Architecture", "Status", "Test top-1 (%)"],
     s.teachers.map((t) => `<tr><td>${esc(t.key)}</td><td>${esc(t.arch)}</td>
       <td class="${t.status === "failed" ? "bad" : t.status === "done" ? "ok" : ""}">${label[t.status]}${t.error ? " · " + esc(t.error) : ""}</td><td>${pct(t.test)}</td></tr>`), "No teachers in this profile.");
