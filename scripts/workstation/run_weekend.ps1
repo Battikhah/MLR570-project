@@ -36,8 +36,7 @@ param(
   [int]$SyncMinutes = 5,        # how often results and checkpoints are copied to Google Drive
   [string]$Remote = "gdrive",   # rclone remote name
   [string]$Data = "",           # CIFAR folder (e.g. on OneDrive); default: local, re-downloaded after a wipe
-  [switch]$SetupOnly,
-  [switch]$SkipRestore          # restart without a reboot: the local disk already has every result
+  [switch]$SetupOnly
 )
 $ErrorActionPreference = "Stop"
 $env:PYTHONUTF8 = "1"   # Windows defaults to cp1252, which cannot write the Greek letters in reports and logs
@@ -85,13 +84,8 @@ function Push-Drive {
 
 # --- 3. pull back what earlier sessions saved, so runs resume ----------------------------------------
 # --update: never replace a newer local file (a restart without a wipe) with an older Drive copy.
-if ($SkipRestore) {
-  Write-Host "Skipping the restore from Google Drive (-SkipRestore)."
-} else {
-  Write-Host "Restoring earlier results from Google Drive (several minutes; progress every 30 s)..."
-  & $rclone copy "$Dest/outputs" $Out --update --exclude "claim" --exclude "*.claim" --exclude "*.error.json" --fast-list --stats 30s --stats-one-line -v
-  if ($LASTEXITCODE -ne 0) { throw "Could not restore earlier results from Google Drive." }
-}
+& $rclone copy "$Dest/outputs" $Out --update --exclude "claim" --exclude "*.claim" --exclude "*.error.json" --fast-list
+if ($LASTEXITCODE -ne 0) { throw "Could not restore earlier results from Google Drive." }
 
 # --- 4. latest code from git -----------------------------------------------------------------------
 Set-Location $Code
