@@ -1,6 +1,6 @@
 # Decision 0002 — Weekend queue revision
 
-- **Status:** Adopted for the remaining workstation window.
+- **Status:** Adopted for the remaining workstation window; block order amended by decision 0003.
 - **Date:** 2026-11-14
 - **Scope:** Scheduling and replication allocation only; existing experiment IDs and spec contents remain stable.
 

@@ -64,7 +64,8 @@ Steps:
    checks that CUDA works, runs the CPU tests, downloads CIFAR (⛔ the first CIFAR download needs approval), and downloads and extracts CRD's teachers into `<-Data>\mdistiller\` if they are not there yet (size and SHA-256 checked; with `-Data U:\pcd-data`, which survives DeepFreeze, this happens once).
 3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
    claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share the explicit
-   `suite.WEEKEND_PLAN` blocks documented in `docs/decisions/0002-weekend-queue-revision.md`; each
+   `suite.WEEKEND_PLAN` blocks documented in `docs/decisions/0002-weekend-queue-revision.md` and
+   `docs/decisions/0003-high-rho-seeds.md`; each
    teacher is inserted just before its first user. Work not selected by a block remains in the
    original seed / `PRIORITY` / design order as a deferred tail. `-Family "label-noise ..."` narrows it.
 4. **When leaving:** keep the PowerShell window open (it does the uploads) and disconnect the RDP window. Do not sign out, because signing out ends the run.

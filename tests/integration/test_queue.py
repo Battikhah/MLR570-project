@@ -35,7 +35,7 @@ def test_queue_order_matches_blocks_once_then_old_order_tail():
             and s["family"] == family
             and s["seed"] in seeds
             and (conditions is None or s["condition"] in conditions)
-            and (arms is None or s["arm"] in arms)
+            and (s["arm"] in arms if arms is not None else s["arm"] not in suite.DEFERRED_ARMS)
         ]
         expected = sorted(block, key=lambda s: (s["seed"], pos[id(s)]))
         assert q[cursor : cursor + len(expected)] == expected
@@ -44,6 +44,18 @@ def test_queue_order_matches_blocks_once_then_old_order_tail():
     rank = {name: i for i, name in enumerate(PRIORITY)}
     tail = [s for s in SCREEN if id(s) not in matched]
     assert q[cursor:] == sorted(tail, key=lambda s: (s["seed"], rank[s["family"]], pos[id(s)]))
+
+
+def test_high_rho_core_seeds_come_before_low_rho_seeds_and_dtokd_is_deferred():
+    q = queue_order(SCREEN)
+    tc = [s for s in q if s["family"] == "teacher-corruption" and s["seed"] in (1, 2)]
+    first = tc[: 2 * 2 * len(suite.TC_CORE_ARMS)]
+    assert {s["condition"] for s in first} == {"rho0.5", "rho0.7"}
+    assert {s["arm"] for s in first} == set(suite.TC_CORE_ARMS)
+    plan_len = sum(1 for s in SCREEN if any(suite.in_block(s, b) for b in WEEKEND_PLAN))
+    planned = q[:plan_len]
+    assert not any(s["arm"] == "dtokd" and s["family"] != "lit-p1" for s in planned)
+    assert any(s["arm"] == "dtokd" for s in q[plan_len:])
 
 
 def test_weekend_plan_rejects_unknown_names(monkeypatch):

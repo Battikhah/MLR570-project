@@ -556,6 +556,12 @@ PRIORITY = (
 
 # Each block is (family, seeds, conditions, arms); None selects every condition/arm.
 # Blocks spend this weekend on paired evidence for the paper's central claims, then defer the rest.
+# Decision 0003: high-rho teacher-corruption seeds for the arms the robustness claim compares.
+TC_CORE_ARMS = (
+    "ce", "pcd_t0.5", "pcd_t1.0", "nwkd_l0.5", "nwkd_l1.0", "wkd_l0.9", "dot_d0.075", "pcdrev_t0.5",
+)
+# Arms left out of blocks that select every arm (decision 0003); they still run in the tail.
+DEFERRED_ARMS = ("dtokd",)
 WEEKEND_PLAN = (
     (
         "lit-p1",
@@ -571,20 +577,32 @@ WEEKEND_PLAN = (
     ("core-p0", (0,), None, None),
     ("label-noise", (0,), None, None),
     ("teacher-corruption", (0,), None, None),
+    ("teacher-corruption", (1, 2), ("rho0.5", "rho0.7"), TC_CORE_ARMS),
     ("teacher-corruption", (1, 2), ("rho0.0", "rho0.1", "rho0.3"), None),
     ("lit-p1", (0, 1), None, ("ce", "wkd_l0.9", "nwkd_l1.0", "pcd_t2.0", "pcgrad1s", "dot_d0.075")),
     ("temperature", (0,), None, None),
     ("multi-loss-dkd", (0,), None, None),
     ("pcd-ablations", (0,), None, None),
     ("core-p1", (0,), None, None),
-    ("sensitivity", (0,), None, None),
-    ("teacher-corruption", (3, 4), ("rho0.0", "rho0.1", "rho0.3"), None),
-    ("label-noise", (1,), None, None),
+    ("teacher-corruption", (3, 4), ("rho0.0", "rho0.5", "rho0.7"), TC_CORE_ARMS),
     ("core-p0", (1, 2), None, None),
+    ("label-noise", (1,), None, None),
+    ("sensitivity", (0,), None, None),
     ("mve-cifar10", (1,), None, None),
     ("label-noise-noisy-teacher", (0,), None, None),
     ("label-noise", (2,), None, None),
 )
+
+
+def in_block(s, block):
+    """Whether student spec ``s`` belongs to a WEEKEND_PLAN block (before first-match-wins)."""
+    family, seeds, conditions, arms = block
+    return (
+        s["family"] == family
+        and s["seed"] in seeds
+        and (conditions is None or s["condition"] in conditions)
+        and (s["arm"] in arms if arms is not None else s["arm"] not in DEFERRED_ARMS)
+    )
 
 
 def _validate_weekend_plan():
@@ -609,15 +627,8 @@ def queue_order(students):
     """Apply the explicit weekend blocks, then retain all unmatched work in the old order."""
     pos = {id(s): i for i, s in enumerate(students)}
     matched, ordered = set(), []
-    for family, seeds, conditions, arms in WEEKEND_PLAN:
-        block = [
-            s for s in students
-            if id(s) not in matched
-            and s["family"] == family
-            and s["seed"] in seeds
-            and (conditions is None or s["condition"] in conditions)
-            and (arms is None or s["arm"] in arms)
-        ]
+    for plan_block in WEEKEND_PLAN:
+        block = [s for s in students if id(s) not in matched and in_block(s, plan_block)]
         block.sort(key=lambda s: (s["seed"], pos[id(s)]))
         ordered.extend(block)
         matched.update(map(id, block))
