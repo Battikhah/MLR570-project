@@ -29,8 +29,11 @@ def test_queue_order_matches_blocks_once_then_old_order_tail():
     matched = set()
     for family, seeds, conditions, arms in WEEKEND_PLAN:
         block = [
-            s for s in SCREEN
-            if id(s) not in matched and s["family"] == family and s["seed"] in seeds
+            s
+            for s in SCREEN
+            if id(s) not in matched
+            and s["family"] == family
+            and s["seed"] in seeds
             and (conditions is None or s["condition"] in conditions)
             and (arms is None or s["arm"] in arms)
         ]
@@ -191,3 +194,38 @@ def test_clearing_claims_retries_failed_teachers(tmp_path):
     assert not err.exists()
     status = run_queue(students, teachers, tmp_path, device="cpu", log=quiet)
     assert status["failed"] == 0 and status["done"] == 2
+
+
+def test_a_gpu_fault_hands_the_task_back_and_stops_the_worker(tmp_path, monkeypatch):
+    import pcdkd.experiments.runner as runner
+
+    students, teachers = _cheap(2)
+    for key in teachers:
+        pt = teacher_paths(tmp_path, "smoke", key)[0]
+        pt.parent.mkdir(parents=True, exist_ok=True)
+        pt.touch()
+    calls = []
+
+    def dead_gpu(spec, *_args, **_kwargs):
+        calls.append(spec["id"])
+        raise RuntimeError("CUDA error: unknown error")
+
+    monkeypatch.setattr(runner, "run_student", dead_gpu)
+    rdir = run_dir(tmp_path, students[0])
+    for n in (1, 2):
+        with pytest.raises(runner.GpuFault):
+            run_queue(students, teachers, tmp_path, log=quiet)
+        assert calls == [students[0]["id"]] * n  # no retry, and the next task is never touched
+        assert not (rdir / "claim").exists() and not (rdir / "error.json").exists()
+    with pytest.raises(runner.GpuFault):  # third fault on the same task: it counts as failed
+        run_queue(students, teachers, tmp_path, log=quiet)
+    assert (rdir / "error.json").exists()
+
+
+def test_clearing_claims_also_clears_student_failures(tmp_path):
+    students, _ = _cheap(1)
+    err = run_dir(tmp_path, students[0]) / "error.json"
+    err.parent.mkdir(parents=True)
+    err.write_text("{}")
+    clear_claims(tmp_path, "smoke")
+    assert not err.exists()

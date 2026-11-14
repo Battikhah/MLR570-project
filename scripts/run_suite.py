@@ -25,10 +25,18 @@ import argparse
 import collections
 import ctypes
 import os
+import subprocess
 import sys
+import time
 from datetime import datetime, timedelta
 
-from pcdkd.experiments.runner import clear_claims, queue_tasks, run_many, run_queue
+from pcdkd.experiments.runner import (
+    GpuFault,
+    clear_claims,
+    queue_tasks,
+    run_many,
+    run_queue,
+)
 from pcdkd.experiments.suite import (
     FAMILIES,
     FAMILY_NAMES,
@@ -128,16 +136,20 @@ def cmd_run(args):
         if args.shard or args.stage != "all":
             print("--queue replaces --shard and --stage", file=sys.stderr)
             return 2
-        status = run_queue(
-            students,
-            teachers,
-            args.out,
-            data_root=args.data_root,
-            device=args.device,
-            workers=args.workers,
-            ckpt_every=args.ckpt_every,
-            should_stop=guard,
-        )
+        try:
+            status = run_queue(
+                students,
+                teachers,
+                args.out,
+                data_root=args.data_root,
+                device=args.device,
+                workers=args.workers,
+                ckpt_every=args.ckpt_every,
+                should_stop=guard,
+            )
+        except GpuFault as e:
+            print(f"GPU fault on {e}; this process exits so a fresh one can take over")
+            return GPU_FAULT
         print(status)
         if status["paused"]:
             print("paused for the access window; rerun the same command next window to resume")
@@ -157,6 +169,22 @@ def cmd_run(args):
     if status["paused"]:
         print("paused for the access window; rerun the same command next window to resume")
     return 1 if status["failed"] else 0
+
+
+GPU_FAULT = 3
+
+
+def supervise(cmd, guard, run=subprocess.call, sleep=time.sleep, pause=120):
+    """Run the queue worker ``cmd`` in a child process, and start a fresh one after a GPU fault
+    (a dead CUDA context cannot recover in-process) until the window closes."""
+    while True:
+        code = run(cmd, env={**os.environ, "PCDKD_CHILD": "1"})
+        if code != GPU_FAULT or guard is None or guard(0.0):
+            return code
+        print(f"[worker] GPU fault; starting a fresh worker in {pause} s", flush=True)
+        sleep(pause)
+        if guard(0.0):
+            return code
 
 
 def main(argv=None):
@@ -194,7 +222,13 @@ def main(argv=None):
     if args.command == "clear-claims":
         print(f"cleared {clear_claims(args.out, args.profile)} claims")
         return 0
-    return cmd_list(args) if args.command == "list" else cmd_run(args)
+    if args.command == "list":
+        return cmd_list(args)
+    if args.queue and not args.dry_run and not os.environ.get("PCDKD_CHILD"):
+        argv = sys.argv[1:] if argv is None else argv
+        guard = make_guard(args.window, args.stop_margin_min)
+        return supervise([sys.executable, os.path.abspath(__file__), *argv], guard)
+    return cmd_run(args)
 
 
 if __name__ == "__main__":

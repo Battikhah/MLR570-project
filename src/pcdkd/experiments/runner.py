@@ -291,6 +291,14 @@ def run_many(students, teacher_specs, out, *, stage="all", log=print, should_sto
 # --- shared work queue: several processes on one GPU, highest-priority work first ----------------
 
 
+class GpuFault(RuntimeError):
+    """The CUDA context of this process is dead: every later task here would fail instantly."""
+
+
+def _gpu_fault(exc):
+    return "CUDA error" in str(exc)
+
+
 def _claim_path(out, profile, task):
     kind, x = task
     if kind == "teacher":
@@ -311,10 +319,11 @@ def _claim(path):
 
 
 def clear_claims(out, profile):
-    """Drop every claim, and every teacher failure so it is retried (run once before starting
-    workers; claims of a dead session are stale). Returns the number of claims dropped."""
+    """Drop every claim and every failure so it is retried (run once before starting workers;
+    claims of a dead session are stale; Drive keeps the failure records). Returns the number of
+    claims dropped."""
     base = Path(out) / profile
-    for p in (base / "teachers").glob("*.error.json"):
+    for p in [*(base / "teachers").glob("*.error.json"), *base.rglob("error.json")]:
         p.unlink(missing_ok=True)
     n = 0
     for p in [*base.rglob("claim"), *base.rglob("*.claim")]:
@@ -410,6 +419,22 @@ def run_queue(
                 log(f"PAUSED {p}; rerun the same command in the next window to resume")
                 return status
             except Exception as exc:  # noqa: BLE001 - one bad task must not stop the queue
+                if _gpu_fault(exc):
+                    # retrying here fails too and would burn through the whole queue: hand the
+                    # task back (a task that faults 3 times counts as failed) and exit
+                    mark = target.with_suffix(".gpufault")
+                    n = int(mark.read_text()) + 1 if mark.exists() else 1
+                    _write_json(mark, n)
+                    if n >= 3:
+                        status["failed"] += 1
+                        _write_json(
+                            target,
+                            {"task": name, "error": repr(exc), "traceback": traceback.format_exc()},
+                        )
+                    else:
+                        _claim_path(out, profile, task).unlink(missing_ok=True)
+                    log(f"[{name}] GPU FAULT {n}/3: {exc!r}; stopping this worker")
+                    raise GpuFault(name) from exc
                 if attempt == 1:
                     log(f"[{name}] FAILED (attempt 1): {exc!r}; retrying")
                     continue
