@@ -100,6 +100,7 @@ def test_scan_of_a_small_tree(tmp_path):
     pcd["spec"] = {**pcd["spec"], "method": "pcd"}
     assert compact_result(pcd, 0)["diag"]["active_rate"] == 0.4
     assert [x["id"] for x in s["failures"]] == [failed["id"]]
+    assert failed["id"] not in {x["id"] for x in s["forecast"]["next"]}
     assert [w["log"] for w in s["workers"]] == ["worker1-20261113-1700.log"]  # newest session
     (a,) = s["active"]
     assert a["id"] == running["id"] and a["epoch"] == 2 and a["sec_per_epoch"] == 5

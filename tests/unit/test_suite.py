@@ -106,7 +106,14 @@ def test_profiles_scale_schedule_only():
     full_cells = {(s["family"], s["condition"], s["arm"]) for s in STUDENTS}
     assert {(s["family"], s["condition"], s["arm"]) for s in screen} == full_cells
     assert {(s["family"], s["condition"], s["arm"]) for s in smoke} == full_cells
-    assert max(s["seed"] for s in screen) < PROFILES["screen"]["max_seeds"]
+    overrides = PROFILES["screen"].get("seed_overrides", {})
+    for family, count in overrides.items():
+        assert {s["seed"] for s in screen if s["family"] == family} == set(range(count))
+    assert all(
+        s["seed"] < PROFILES["screen"]["max_seeds"]
+        for s in screen
+        if s["family"] not in overrides
+    )
 
 
 def test_filters():

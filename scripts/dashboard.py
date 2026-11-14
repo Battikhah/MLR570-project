@@ -435,7 +435,8 @@ class Scanner:
                 f["blocked"] += 1
             else:
                 f["left"] += 1
-            remaining.append(t)  # failed and blocked tasks are retried in the next session
+            if t["id"] not in failed_ids:
+                remaining.append(t)
         alive = sum(w["alive"] for w in workers)
         lanes = alive or len(workers) or 3
         proj = forecast(

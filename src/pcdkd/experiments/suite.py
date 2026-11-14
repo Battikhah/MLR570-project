@@ -18,7 +18,13 @@ import re
 
 PROFILES = {
     "full": {"epochs": 240, "max_seeds": 99, "synthetic": False, "max_steps": None},
-    "screen": {"epochs": 60, "max_seeds": 2, "synthetic": False, "max_steps": None},
+    "screen": {
+        "epochs": 60,
+        "max_seeds": 2,
+        "synthetic": False,
+        "max_steps": None,
+        "seed_overrides": {"teacher-corruption": 5, "label-noise": 3, "core-p0": 3, "lit-p1": 2},
+    },
     "smoke": {"epochs": 1, "max_seeds": 1, "synthetic": True, "max_steps": 2, "batch_size": 8},
 }
 TEACHER_EPOCHS = {"full": 240, "screen": 240, "smoke": 1}
@@ -231,7 +237,7 @@ FAMILIES = [
         0,
         1,
         [({}, "clean")],
-        [CE, wkd(0.9), nwkd(1.0), pcd(0.5), pcd(1.0), PCGRAD, MGDA, DTO, DOT_],
+        [CE, wkd(0.9), nwkd(1.0), pcd(0.5), pcd(1.0), PCGRAD, MGDA, DTO, DOT_, pcd(2.0)],
         P1_MD,
         val_size=0,  # no val set, so every arm runs at its paper/default setting (no grid)
         epochs=240,  # the protocol's length in every profile except smoke
@@ -476,7 +482,10 @@ def build_specs(profile="full", families=None, tiers=None):
             continue
         for cond, cname in fam["conditions"]:
             for a in fam["arms"]:
-                for seed in range(min(fam["seeds"], prof["max_seeds"])):
+                n_seeds = prof.get("seed_overrides", {}).get(
+                    fam["name"], min(fam["seeds"], prof["max_seeds"])
+                )
+                for seed in range(n_seeds):
                     s = (
                         copy.deepcopy(BASE)
                         | copy.deepcopy(fam["pair"])
@@ -545,12 +554,77 @@ PRIORITY = (
 )
 
 
+# Each block is (family, seeds, conditions, arms); None selects every condition/arm.
+# Blocks spend this weekend on paired evidence for the paper's central claims, then defer the rest.
+WEEKEND_PLAN = (
+    (
+        "lit-p1",
+        (0,),
+        None,
+        (
+            "ce", "wkd_l0.9", "nwkd_l1.0", "pcd_t0.5", "pcd_t1.0", "pcgrad1s", "mgda",
+            "dtokd", "dot_d0.075",
+        ),
+    ),
+    ("pilot", (0,), None, None),
+    ("mve-cifar10", (0,), None, None),
+    ("core-p0", (0,), None, None),
+    ("label-noise", (0,), None, None),
+    ("teacher-corruption", (0,), None, None),
+    ("teacher-corruption", (1, 2), ("rho0.0", "rho0.1", "rho0.3"), None),
+    ("lit-p1", (0, 1), None, ("ce", "wkd_l0.9", "nwkd_l1.0", "pcd_t2.0", "pcgrad1s", "dot_d0.075")),
+    ("temperature", (0,), None, None),
+    ("multi-loss-dkd", (0,), None, None),
+    ("pcd-ablations", (0,), None, None),
+    ("core-p1", (0,), None, None),
+    ("sensitivity", (0,), None, None),
+    ("teacher-corruption", (3, 4), ("rho0.0", "rho0.1", "rho0.3"), None),
+    ("label-noise", (1,), None, None),
+    ("core-p0", (1, 2), None, None),
+    ("mve-cifar10", (1,), None, None),
+    ("label-noise-noisy-teacher", (0,), None, None),
+    ("label-noise", (2,), None, None),
+)
+
+
+def _validate_weekend_plan():
+    by_name = {f["name"]: f for f in FAMILIES}
+    for family, _seeds, conditions, arms in WEEKEND_PLAN:
+        if family not in by_name:
+            raise ValueError(f"unknown weekend-plan family: {family}")
+        fam = by_name[family]
+        known_conditions = {name for _, name in fam["conditions"]}
+        known_arms = {a["arm"] for a in fam["arms"]}
+        if conditions is not None and not set(conditions) <= known_conditions:
+            unknown = set(conditions) - known_conditions
+            raise ValueError(f"unknown weekend-plan condition for {family}: {unknown}")
+        if arms is not None and not set(arms) <= known_arms:
+            raise ValueError(f"unknown weekend-plan arm for {family}: {set(arms) - known_arms}")
+
+
+_validate_weekend_plan()
+
+
 def queue_order(students):
-    """Seed 0 of every family before any seed 1; within a seed, families by ``PRIORITY``, then the
-    design order (condition, arm), so each finished stretch is a complete comparison."""
-    rank = {f: i for i, f in enumerate(PRIORITY)}
+    """Apply the explicit weekend blocks, then retain all unmatched work in the old order."""
     pos = {id(s): i for i, s in enumerate(students)}
-    return sorted(students, key=lambda s: (s["seed"], rank[s["family"]], pos[id(s)]))
+    matched, ordered = set(), []
+    for family, seeds, conditions, arms in WEEKEND_PLAN:
+        block = [
+            s for s in students
+            if id(s) not in matched
+            and s["family"] == family
+            and s["seed"] in seeds
+            and (conditions is None or s["condition"] in conditions)
+            and (arms is None or s["arm"] in arms)
+        ]
+        block.sort(key=lambda s: (s["seed"], pos[id(s)]))
+        ordered.extend(block)
+        matched.update(map(id, block))
+    rank = {f: i for i, f in enumerate(PRIORITY)}
+    tail = [s for s in students if id(s) not in matched]
+    tail.sort(key=lambda s: (s["seed"], rank[s["family"]], pos[id(s)]))
+    return ordered + tail
 
 
 def _teacher_spec(key, s, arch, noisy, profile, crd=False):

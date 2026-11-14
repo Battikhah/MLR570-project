@@ -146,7 +146,7 @@ def _evaluate(model, dataset, classes, device, workers, **kw):
     """Metrics on ``dataset``; None when there is no such split (``val_size: 0``)."""
     if dataset is None:
         return None
-    return evaluate(model, _loader(dataset, 512, False, 0, workers, device), classes, device, **kw)
+    return evaluate(model, _loader(dataset, 512, False, 0, 0, device), classes, device, **kw)
 
 
 def _load_pretrained(path, key):
@@ -341,7 +341,7 @@ def run_queue(
     """Work through ``queue_tasks`` with any number of cooperating processes.
 
     Each process takes the first task that is not finished, not claimed and not waiting for a
-    teacher, so the GPU always works on the highest-priority runnable task. A student whose
+    teacher, preserving the selected queue plan. A student whose
     teacher another process is still training waits; one whose teacher failed is skipped. Returns
     the status count of the tasks this process ran.
     """
@@ -389,28 +389,33 @@ def run_queue(
             continue
         pending.remove(task)
         kind, x = task
-        try:
-            if kind == "teacher":
-                run_teacher(teacher_specs[x], out, log=log, should_stop=should_stop, **kw)
-                status["done"] += 1
-            else:
-                status[
-                    run_student(x, teacher_specs, out, log=log, should_stop=should_stop, **kw)
-                ] += 1
-        except Paused as p:
-            status["paused"] = 1
-            log(f"PAUSED {p}; rerun the same command in the next window to resume")
-            return status
-        except Exception as exc:  # noqa: BLE001 - one bad task must not stop the queue
-            status["failed"] += 1
-            target = (
-                teacher_paths(out, profile, x)[0].with_suffix(".error.json")
-                if kind == "teacher"
-                else run_dir(out, x) / "error.json"
-            )
-            name = x if kind == "teacher" else x["id"]
-            _write_json(
-                target, {"task": name, "error": repr(exc), "traceback": traceback.format_exc()}
-            )
-            log(f"[{name}] FAILED: {exc!r}")
+        name = x if kind == "teacher" else x["id"]
+        target = (
+            teacher_paths(out, profile, x)[0].with_suffix(".error.json")
+            if kind == "teacher"
+            else run_dir(out, x) / "error.json"
+        )
+        for attempt in (1, 2):
+            try:
+                if kind == "teacher":
+                    run_teacher(teacher_specs[x], out, log=log, should_stop=should_stop, **kw)
+                    status["done"] += 1
+                else:
+                    status[
+                        run_student(x, teacher_specs, out, log=log, should_stop=should_stop, **kw)
+                    ] += 1
+                break
+            except Paused as p:
+                status["paused"] = 1
+                log(f"PAUSED {p}; rerun the same command in the next window to resume")
+                return status
+            except Exception as exc:  # noqa: BLE001 - one bad task must not stop the queue
+                if attempt == 1:
+                    log(f"[{name}] FAILED (attempt 1): {exc!r}; retrying")
+                    continue
+                status["failed"] += 1
+                _write_json(
+                    target, {"task": name, "error": repr(exc), "traceback": traceback.format_exc()}
+                )
+                log(f"[{name}] FAILED: {exc!r}")
     return status

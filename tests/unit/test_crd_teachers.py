@@ -51,13 +51,14 @@ def test_md_downsample_only_where_shape_changes():
 def test_lit_p1_specs():
     for profile in ("screen", "full"):
         students, teachers = build_specs(profile, families=["lit-p1"])
-        assert len(students) == 9 and {s["seed"] for s in students} == {0}
+        assert len(students) == (20 if profile == "screen" else 10)
+        assert {s["seed"] for s in students} == ({0, 1} if profile == "screen" else {0})
         assert {s["epochs"] for s in students} == {240}
         assert {s["val_size"] for s in students} == {0}
         assert {tuple(s["teacher_keys"]) for s in students} == {(KEY,)}
         assert {s["arch"] for s in students} == {"md_resnet8x4"}
         assert {s["arm"] for s in students} == {
-            "ce", "wkd_l0.9", "nwkd_l1.0", "pcd_t0.5", "pcd_t1.0",
+            "ce", "wkd_l0.9", "nwkd_l1.0", "pcd_t0.5", "pcd_t1.0", "pcd_t2.0",
             "pcgrad1s", "mgda", "dtokd", "dot_d0.075",
         }  # fmt: skip
         assert {s["T"] for s in students} == {4.0}

@@ -10,11 +10,11 @@ Rules this script follows:
     (My Drive/pcd-suite) every -SyncMinutes, so a crash or wipe loses at most that much. At the
     start of a session the Drive copy is pulled back, so runs resume from their last checkpoint.
 
-What it runs: the whole suite (all 18 families of the chosen profile) as one priority queue,
-shared by -Procs processes on the GPU. Seed 0 of every family comes before any second seed, and
-families run most-revealing first (src/pcdkd/experiments/suite.py, PRIORITY), so whatever finishes
-by Monday is the most informative subset. Each teacher is trained just before the first run that
-needs it. Rerunning the same command next window continues where it stopped.
+What it runs: the whole suite (all 19 families of the chosen profile) as one queue shared by
+-Procs processes on the GPU. It follows the explicit weekend plan in
+src/pcdkd/experiments/suite.py (WEEKEND_PLAN), then appends all deferred work in its legacy order.
+Each teacher is trained just before the first run that needs it. Rerunning the same command next
+window continues where it stopped.
 
 Usage, in PowerShell on the workstation (connected over GlobalProtect + RDP). Once per wipe:
   git clone https://github.com/Battikhah/MLR570-project "$env:LOCALAPPDATA\pcd-suite\code"

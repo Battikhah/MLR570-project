@@ -1,7 +1,8 @@
-"""Shared priority queue for a time-limited GPU window: several processes, one queue."""
+"""Shared queue ordering and execution behavior on synthetic data."""
 
 import pytest
 
+from pcdkd.experiments import suite
 from pcdkd.experiments.runner import (
     _claim,
     _claim_path,
@@ -11,7 +12,7 @@ from pcdkd.experiments.runner import (
     run_queue,
     teacher_paths,
 )
-from pcdkd.experiments.suite import PRIORITY, build_specs, queue_order
+from pcdkd.experiments.suite import PRIORITY, WEEKEND_PLAN, build_specs, queue_order
 
 pytestmark = pytest.mark.integration
 SMOKE, SMOKE_TEACHERS = build_specs("smoke")
@@ -19,16 +20,39 @@ SCREEN, _ = build_specs("screen")
 quiet = lambda m: None  # noqa: E731
 
 
-def test_queue_order_is_breadth_first_by_priority():
+def test_queue_order_matches_blocks_once_then_old_order_tail():
     q = queue_order(SCREEN)
-    seeds = [s["seed"] for s in q]
-    assert seeds == sorted(seeds)  # every seed-0 run before any seed-1 run
-    seed0 = [s["family"] for s in q if s["seed"] == 0]
-    ranks = [PRIORITY.index(f) for f in seed0]
-    assert ranks == sorted(ranks) and seed0[0] == "lit-p1"  # the literature anchor first
-    # within a family the design order is kept: one condition's arms finish together
-    tc = [s["condition"] for s in q if s["family"] == "teacher-corruption" and s["seed"] == 0]
-    assert tc == sorted(tc, key=tc.index)
+    assert len(q) == len(SCREEN) and len({s["id"] for s in q}) == len(q)
+    # Every selected block is contiguous and sorted by seed then original design position.
+    cursor = 0
+    pos = {id(s): i for i, s in enumerate(SCREEN)}
+    matched = set()
+    for family, seeds, conditions, arms in WEEKEND_PLAN:
+        block = [
+            s for s in SCREEN
+            if id(s) not in matched and s["family"] == family and s["seed"] in seeds
+            and (conditions is None or s["condition"] in conditions)
+            and (arms is None or s["arm"] in arms)
+        ]
+        expected = sorted(block, key=lambda s: (s["seed"], pos[id(s)]))
+        assert q[cursor : cursor + len(expected)] == expected
+        cursor += len(expected)
+        matched.update(map(id, expected))
+    rank = {name: i for i, name in enumerate(PRIORITY)}
+    tail = [s for s in SCREEN if id(s) not in matched]
+    assert q[cursor:] == sorted(tail, key=lambda s: (s["seed"], rank[s["family"]], pos[id(s)]))
+
+
+def test_weekend_plan_rejects_unknown_names(monkeypatch):
+    monkeypatch.setattr(suite, "WEEKEND_PLAN", (("teacher-corruption", (0,), None, ("typo",)),))
+    with pytest.raises(ValueError, match="unknown weekend-plan arm"):
+        suite._validate_weekend_plan()
+    monkeypatch.setattr(suite, "WEEKEND_PLAN", (("teacher-corruption", (0,), ("typo",), None),))
+    with pytest.raises(ValueError, match="unknown weekend-plan condition"):
+        suite._validate_weekend_plan()
+    monkeypatch.setattr(suite, "WEEKEND_PLAN", (("missing", (0,), None, None),))
+    with pytest.raises(ValueError, match="unknown weekend-plan family"):
+        suite._validate_weekend_plan()
 
 
 def test_each_teacher_comes_just_before_its_first_student():
@@ -65,8 +89,8 @@ def test_queue_trains_teacher_then_students_and_is_idempotent(tmp_path):
 
 def test_queue_leaves_tasks_claimed_by_another_process(tmp_path):
     students, teachers = _cheap()
-    run_queue(students[:1], teachers, tmp_path, device="cpu", log=quiet)  # trains the teacher
-    assert _claim(_claim_path(tmp_path, "smoke", ("student", students[1])))  # other process
+    run_queue(students[:1], teachers, tmp_path, device="cpu", log=quiet)
+    assert _claim(_claim_path(tmp_path, "smoke", ("student", students[1])))
     status = run_queue(students, teachers, tmp_path, device="cpu", log=quiet)
     assert not (run_dir(tmp_path, students[1]) / "result.json").exists()
     assert (run_dir(tmp_path, students[2]) / "result.json").exists()
@@ -76,7 +100,7 @@ def test_queue_leaves_tasks_claimed_by_another_process(tmp_path):
 def test_student_waits_for_a_teacher_in_training_elsewhere(tmp_path):
     students, teachers = _cheap(1)
     (key,) = teachers
-    assert _claim(_claim_path(tmp_path, "smoke", ("teacher", key)))  # another process trains it
+    assert _claim(_claim_path(tmp_path, "smoke", ("teacher", key)))
 
     class Waited(Exception):
         pass
@@ -105,6 +129,56 @@ def test_closing_window_stops_the_queue(tmp_path):
         students, teachers, tmp_path, device="cpu", log=quiet, should_stop=lambda s: True
     )
     assert status["paused"] == 1 and not any(tmp_path.rglob("*.pt"))
+
+
+def test_retry_succeeds_and_keeps_checkpoint_for_resume(tmp_path, monkeypatch):
+    import pcdkd.experiments.runner as runner
+
+    (students, teachers) = _cheap(1)
+    for key in teachers:
+        pt = teacher_paths(tmp_path, "smoke", key)[0]
+        pt.parent.mkdir(parents=True, exist_ok=True)
+        pt.touch()
+    calls, logs = [], []
+
+    def flaky(spec, *_args, **_kwargs):
+        checkpoint = run_dir(tmp_path, spec) / "checkpoint.pt"
+        if calls:
+            assert checkpoint.exists()
+            calls.append("resume")
+            return "done"
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint.touch()
+        calls.append("failed")
+        raise OSError(22, "spawn failed")
+
+    monkeypatch.setattr(runner, "run_student", flaky)
+    status = run_queue(students, teachers, tmp_path, log=logs.append)
+    assert calls == ["failed", "resume"]
+    assert status["done"] == 1 and status["failed"] == 0
+    assert any("FAILED (attempt 1): OSError(22, 'spawn failed'); retrying" in x for x in logs)
+    assert not (run_dir(tmp_path, students[0]) / "error.json").exists()
+
+
+def test_retry_writes_error_only_after_second_failure(tmp_path, monkeypatch):
+    import pcdkd.experiments.runner as runner
+
+    (students, teachers) = _cheap(1)
+    for key in teachers:
+        pt = teacher_paths(tmp_path, "smoke", key)[0]
+        pt.parent.mkdir(parents=True, exist_ok=True)
+        pt.touch()
+    calls, logs = [], []
+
+    def broken(*_args, **_kwargs):
+        calls.append(1)
+        raise RuntimeError("persistent")
+
+    monkeypatch.setattr(runner, "run_student", broken)
+    status = run_queue(students, teachers, tmp_path, log=logs.append)
+    assert len(calls) == 2 and status["failed"] == 1
+    assert (run_dir(tmp_path, students[0]) / "error.json").exists()
+    assert any("FAILED (attempt 1): RuntimeError('persistent'); retrying" in x for x in logs)
 
 
 def test_clearing_claims_retries_failed_teachers(tmp_path):

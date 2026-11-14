@@ -295,7 +295,7 @@ def train(
         nesterov=False,
     )
     train_dl = _loader(data["train"], spec["batch_size"], True, spec["seed"], workers, device)
-    val_dl = None if data["val"] is None else _loader(data["val"], 512, False, 0, workers, device)
+    val_dl = None if data["val"] is None else _loader(data["val"], 512, False, 0, 0, device)
     labels_all = data["train_labels"]
     need_feats = "at" in objectives
     whole, thirds = DiagnosticsAggregator(), [DiagnosticsAggregator() for _ in range(3)]

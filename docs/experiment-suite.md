@@ -63,10 +63,10 @@ Steps:
    without training: `powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly`. It signs rclone in to Google (browser), restores earlier results from Drive, pulls,
    checks that CUDA works, runs the CPU tests, downloads CIFAR (⛔ the first CIFAR download needs approval), and downloads and extracts CRD's teachers into `<-Data>\mdistiller\` if they are not there yet (size and SHA-256 checked; with `-Data U:\pcd-data`, which survives DeepFreeze, this happens once).
 3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
-   claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share one priority queue:
-   seed 0 of every family before any second seed, families ordered by `suite.PRIORITY` (most
-   revealing first), each teacher trained just before its first user. Whatever finishes by Monday is
-   the most informative subset; rerunning next window continues. `-Family "label-noise ..."` narrows it.
+   claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share the explicit
+   `suite.WEEKEND_PLAN` blocks documented in `docs/decisions/0002-weekend-queue-revision.md`; each
+   teacher is inserted just before its first user. Work not selected by a block remains in the
+   original seed / `PRIORITY` / design order as a deferred tail. `-Family "label-noise ..."` narrows it.
 4. **When leaving:** keep the PowerShell window open (it does the uploads) and disconnect the RDP window. Do not sign out, because signing out ends the run.
 5. **Afterwards, on the Mac:** Google Drive's `My Drive/pcd-suite/outputs/<profile>/` holds every `result.json`;
    download it (or `rclone copy gdrive:pcd-suite/outputs <dir>`) and point `scripts/analyze_suite.py --out` at it.
@@ -142,12 +142,13 @@ Tier 0 runs first, then tier 1. Tiers 2–3 broaden coverage.
 
 | Profile | Student runs | Full-dataset epoch-passes | Teachers |
 |---|---|---|---|
-| screen, tiers 0–1 | 665 | 76,507 | 4 (1 pre-trained) |
-| screen, all tiers | 1,401 | 154,278 | 15 (1 pre-trained) |
-| full, tiers 0–1 | 1,059 | 466,747 | 4 (1 pre-trained) |
-| full, all tiers | 2,013 | 868,332 | 15 (1 pre-trained) |
+| screen, tiers 0–1 | 1,001 | 118,020 | 4 (1 pre-trained) |
+| screen, all tiers | 1,737 | 195,791 | 15 (1 pre-trained) |
+| full, tiers 0–1 | 1,060 | 467,280 | 4 (1 pre-trained) |
+| full, all tiers | 2,014 | 868,865 | 15 (1 pre-trained) |
 
-From `run_suite.py list`; `lit-p1` adds 9 runs and 4,267 epoch-passes in both profiles. An epoch-pass is one pass over 45k images with one student backward (a 50k-image `lit-p1` epoch counts 50/45). GPU-hours = epoch-passes × the
+From `run_suite.py list`; screen uses its per-family seed overrides and adds the `pcd_t2.0` arm to
+`lit-p1`. An epoch-pass is one pass over 45k images with one student backward (a 50k-image `lit-p1` epoch counts 50/45). GPU-hours = epoch-passes × the
 pilot's measured seconds per epoch-pass for each pair. ESTIMATE, unmeasured: at about 10 s per
 ResNet-8 epoch-pass, screen tiers 0–1 come to roughly 200 GPU-hours before running several shards
 per GPU. Run the pilot first and re-plan from its numbers.

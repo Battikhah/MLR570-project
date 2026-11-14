@@ -8,9 +8,9 @@
     uv run python scripts/run_suite.py clear-claims --profile screen               # once, then:
     uv run python scripts/run_suite.py run --profile screen --queue                # x N processes
 
-``--queue`` runs the whole selection in priority order (seed 0 of every family first, families
-ranked by how much they reveal; see ``suite.PRIORITY``), training each teacher just before the
-first run that needs it. Any number of processes can share one queue: each claims its next task.
+``--queue`` runs the whole selection in ``suite.WEEKEND_PLAN`` order, then the unmatched tail in
+the legacy seed / ``suite.PRIORITY`` / design order, training each teacher just before its first
+user. Any number of processes can share one queue: each claims its next task.
 
 Shards split students only; run ``--stage teachers`` once before launching parallel shards.
 
