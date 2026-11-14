@@ -73,7 +73,7 @@ Steps:
 
 **Profiles** change the schedule only; the design is the same:
 - `full`: 240 epochs, the family's seed count.
-- `screen`: 60 epochs, at most 2 seeds. `lit-p1` keeps 240 epochs and 1 seed in every profile except smoke, because its only purpose is to match the published protocol.
+- `screen`: 60 epochs, at most 2 seeds, except the weekend overrides in `PROFILES["screen"]["seed_overrides"]` (teacher-corruption 5, label-noise 3, core-p0 3, lit-p1 2; decision 0002). `lit-p1` keeps 240 epochs in every profile except smoke, because its only purpose is to match the published protocol.
 - `smoke`: synthetic data, 2 steps, on CPU. The tests use this profile.
 
 ## Protocol shared by every run
