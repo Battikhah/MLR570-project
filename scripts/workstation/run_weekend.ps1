@@ -8,7 +8,7 @@ Rules this script follows:
     pulled to the latest commit each session and re-cloned after a wipe). Runs write to the local
     disk, and rclone copies results, teacher weights, run checkpoints and logs to Google Drive
     (My Drive/pcd-suite) every -SyncMinutes, so a crash or wipe loses at most that much. At the
-    start of a session the Drive copy is pulled back, so runs resume from their last checkpoint.
+    start of a session after a wipe (or with -Restore) the Drive copy is pulled back, so runs resume from their last checkpoint.
 
 What it runs: the whole suite (all 19 families of the chosen profile) as one queue shared by
 -Procs processes on the GPU. It follows the explicit weekend plan in
@@ -23,6 +23,8 @@ Then:
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -SetupOnly        # test access only
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1                   # whole suite, 3 procs
   powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -Procs 4 -Family "label-noise loss-scale"
+  powershell -ExecutionPolicy Bypass -File run_weekend.ps1 -Restore         # force the Drive restore
+The Drive restore runs only when the local results are gone (after a reboot wipe); otherwise it is skipped.
 The first run after a wipe opens a browser to sign in to Google for rclone.
 
 Keep this PowerShell window open: it does the Drive uploads. When leaving, DISCONNECT the RDP
@@ -36,7 +38,8 @@ param(
   [int]$SyncMinutes = 5,        # how often results and checkpoints are copied to Google Drive
   [string]$Remote = "gdrive",   # rclone remote name
   [string]$Data = "",           # CIFAR folder (e.g. on OneDrive); default: local, re-downloaded after a wipe
-  [switch]$SetupOnly
+  [switch]$SetupOnly,
+  [switch]$Restore              # force the Drive restore even if local results survived
 )
 $ErrorActionPreference = "Stop"
 $env:PYTHONUTF8 = "1"   # Windows defaults to cp1252, which cannot write the Greek letters in reports and logs
@@ -83,9 +86,17 @@ function Push-Drive {
 }
 
 # --- 3. pull back what earlier sessions saved, so runs resume ----------------------------------------
-# --update: never replace a newer local file (a restart without a wipe) with an older Drive copy.
-& $rclone copy "$Dest/outputs" $Out --update --exclude "claim" --exclude "*.claim" --exclude "*.error.json" --fast-list
-if ($LASTEXITCODE -ne 0) { throw "Could not restore earlier results from Google Drive." }
+# Only needed after a wipe (reboot): without one, local results survive and are newer than Drive.
+# -Restore forces it. --ignore-existing: never overwrite a local file, and no per-file modtime compare.
+$haveLocal = (Test-Path (Join-Path $Out $Profile)) -and
+  [bool](Get-ChildItem (Join-Path $Out $Profile) -Recurse -Filter result.json -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+if ($haveLocal -and -not $Restore) {
+  Write-Host "Local results present (no wipe since the last session): skipping the Drive restore. Use -Restore to force it."
+} else {
+  Write-Host "Restoring earlier results from Google Drive; progress every 30 s (a large Drive can take several minutes) ..."
+  & $rclone copy "$Dest/outputs" $Out --ignore-existing --exclude "claim" --exclude "*.claim" --exclude "error.json" --exclude "*.error.json" --exclude "*.tmp" --fast-list --checkers 16 --transfers 8 --stats 30s --stats-one-line --stats-log-level NOTICE
+  if ($LASTEXITCODE -ne 0) { throw "Could not restore earlier results from Google Drive." }
+}
 
 # --- 4. latest code from git -----------------------------------------------------------------------
 Set-Location $Code
