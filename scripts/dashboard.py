@@ -113,8 +113,13 @@ def compact_result(r, ts):
             # share of steps with PCD's constraint active (as in analyze_suite.py); other
             # methods log it too, as 0, which means nothing for them
             **(
-                {"active_rate": diagnostics["fractions"]["active"]}
-                if s.get("method") == "pcd" and "active" in diagnostics.get("fractions", {})
+                {
+                    "active_rate": diagnostics["fractions"].get(
+                        "active", nums.get("active", {}).get("mean")
+                    )
+                }
+                if s.get("method") in ("pcd", "pcdl", "pcdlm")
+                and ("active" in diagnostics.get("fractions", {}) or "active" in nums)
                 else {}
             ),
         },

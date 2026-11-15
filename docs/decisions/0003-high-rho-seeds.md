@@ -1,6 +1,6 @@
 # Decision 0003 — Seeds for teacher corruption at high ρ
 
-- **Status:** Adopted for the remaining workstation window.
+- **Status:** Adopted for the remaining workstation window; block order amended by decision 0004.
 - **Date:** 2026-11-14
 - **Scope:** Scheduling only; it amends the block order of decision 0002. Spec IDs and contents do not change.
 

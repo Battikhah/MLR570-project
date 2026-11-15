@@ -21,7 +21,7 @@ def _flat(model):
     )
 
 
-@pytest.mark.parametrize("method", ["pcd", "dot"])  # EMA normaliser state / DOT momentum buffers
+@pytest.mark.parametrize("method", ["pcd", "dot", "pcdl", "pcdlm"])  # EMA / momentum-buffer state
 def test_paused_then_resumed_run_matches_uninterrupted(tmp_path, method):
     spec = next(s for s in SMOKE if s["method"] == method and len(s["teacher_keys"]) == 1)
     spec = dict(spec, epochs=2, batch_size=256, log_every=1)  # 3 steps/epoch keeps CPU time low

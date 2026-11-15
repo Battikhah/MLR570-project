@@ -38,6 +38,7 @@ def load(root):
                 "arm": s["arm"],
                 "group": s["group"],
                 "pcd": s["method"] == "pcd",
+                "variant": s["method"] in ("pcdl", "pcdlm"),  # decision 0004: own groups
                 "seed": s["seed"],
                 "val": (r["val"] or {}).get("top1"),  # None without a val set (val_size 0)
                 "test": r["test"]["top1"],
@@ -45,7 +46,7 @@ def load(root):
                 "teacher_agreement": r["test"].get("teacher_agreement"),
                 "acc_few": r["test"].get("acc_few"),
                 "cos": mean("cos_raw"),
-                "active": d["fractions"].get("active"),
+                "active": d["fractions"].get("active", mean("active")),
                 "lambda": mean("lambda_eff"),
                 "margin_nonpos": d.get("prop47_nonpositive_fraction"),
                 "rules_differ": (float(np.mean(np.asarray(shadow) < 0.99)) if shadow else None),
@@ -128,7 +129,8 @@ def report(runs):
         best = best_config(rows) if has_val else {}
         is_pcd = {g: next(iter(best[g][1].values()))["pcd"] for g in best}
         pcd = [g for g in best if is_pcd[g]]
-        base = [g for g in best if not is_pcd[g]]
+        is_var = {g: next(iter(best[g][1].values()))["variant"] for g in best}
+        base = [g for g in best if not is_pcd[g] and not is_var[g]]  # variants: detail tables only
 
         def val_mean(g, best=best):
             return np.mean([r["val"] for r in best[g][1].values()])

@@ -9,6 +9,8 @@
 * ``DOT(delta, momentum, lam)``: distillation-oriented trainer (Zhao et al., ICCV 2023): separate
   heavy-ball buffers, beta - delta for the task gradient and beta + delta for the KD gradient.
   Use with a momentum-free optimizer.
+* ``LayerPCD(tau)`` / ``LayerPCDM(tau)``: per-layer PCD (decision 0004), the latter on DOT-style
+  separate momentum buffers.
 * ``SymmetricPCGrad(lams)``: gradient surgery of Yu et al. (2020), random projection order.
 * ``shadow_cosines``: from one K=2 ``info`` dict, the pairwise cosines of the directions that
   CE-only, PCD, NWKD, WKD and DTO-KD *would* take on the same batch (no extra backward).
@@ -17,13 +19,15 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from itertools import combinations
 
 import numpy as np
 import torch
 
-from pcdkd.optim.combiners import Combiner, _rescale
-from pcdkd.optim.pcd import MAX_K, pcd_k2_closed_form
+from pcdkd.optim.combiners import Combiner, _cos, _rescale
+from pcdkd.optim.normalize import EMANormalizer
+from pcdkd.optim.pcd import MAX_K, gram_matrix, pcd_k2_closed_form
 
 
 def _lams(lams) -> list[float]:
@@ -180,3 +184,115 @@ def shadow_cosines(info: dict, losses: dict, tau=0.5, lam_nwkd=1.0, lam_wkd=0.9)
 
     pairs = [("pcd", "ce"), ("pcd", "nwkd"), ("pcd", "wkd"), ("pcd", "dto"), ("dto", "nwkd")]
     return {f"shadow_{a}_{b}": cos(W[a], W[b]) for a, b in pairs} | {"shadow_pcd_mu": float(mu)}
+
+
+class LayerPCD(Combiner):
+    """Per-layer PCD (``pcdl``): the K = 2 PCD QP solved separately on each parameter group.
+
+    Each group (a slice of the flattened gradient, see :meth:`set_groups`) has its own EMA norm
+    normalization and its own mu_l = max(0, tau - cos-like term), and its direction is rescaled to
+    that group's ||g_CE^l||. Reuses ``pcd_k2_closed_form`` and ``_rescale``; with a single group
+    it is exactly :class:`pcdkd.optim.combiners.PCD`. Diagnostics: ``lambda_eff`` = numel-weighted
+    mean mu, ``active`` = fraction of groups with mu > 0, per-group ``mu_group`` / ``cos_group``.
+    """
+
+    name = "pcdl"
+
+    def __init__(self, tau: float, beta: float = 0.99, eps: float = 1e-8, rescale: bool = True):
+        super().__init__(beta, eps)
+        if not (math.isfinite(tau) and tau >= 0):
+            raise ValueError(f"tau must be finite and >= 0, got {tau}")
+        self.tau = float(tau)
+        self.rescale = rescale
+        self.group_norm = EMANormalizer(beta, eps)  # one scale per (group, objective)
+        self.groups: list[tuple[str, int]] | None = None
+
+    def set_groups(self, groups: Sequence[tuple[str, int]]) -> None:
+        """Group (name, numel) in the order of the flattened gradient."""
+        self.groups = [(str(n), int(k)) for n, k in groups]
+
+    def _inputs(self, g: list[torch.Tensor]) -> list[torch.Tensor]:
+        return g
+
+    def _direction(self, g, G, norms, scales):
+        if self.groups is None:
+            raise RuntimeError("call set_groups(...) before combine")
+        a, b = self._inputs(g)
+        if sum(k for _, k in self.groups) != a.numel():
+            raise ValueError("group sizes do not add up to the gradient length")
+        parts, mus, coss, sizes, off = [], [], [], [], 0
+        for name, k in self.groups:
+            ga, gb = a[off : off + k], b[off : off + k]
+            off += k
+            Gl = gram_matrix([ga, gb])
+            sa = self.group_norm.update_sq(f"{name}/primary", float(Gl[0, 0]))
+            sb = self.group_norm.update_sq(f"{name}/secondary", float(Gl[1, 1]))
+            na, nb = math.sqrt(max(Gl[0, 0], 0.0)), math.sqrt(max(Gl[1, 1], 0.0))
+            coss.append(_cos(Gl[0, 1], na, nb))
+            if na == 0.0:  # primary-stationary group: no step, nothing active
+                parts.append(torch.zeros_like(ga))
+                mus.append(0.0)
+            else:
+                w, _ = pcd_k2_closed_form(Gl * np.outer([sa, sb], [sa, sb]), self.tau)
+                d_tilde = ga * sa + float(w[1]) * sb * gb if w[1] != 0.0 else ga * sa
+                parts.append(_rescale(d_tilde, na) if self.rescale else d_tilde)
+                mus.append(float(w[1]))
+            sizes.append(k)
+        total = float(sum(sizes))
+        return torch.cat(parts), {
+            "tau": self.tau,
+            "lambda_eff": sum(m * k for m, k in zip(mus, sizes, strict=True)) / total,
+            "active": sum(m > 0 for m in mus) / len(mus),
+            "mu_group": mus,
+            "cos_group": coss,
+        }
+
+    def state_dict(self) -> dict:
+        return super().state_dict() | {"group_norm": self.group_norm.state_dict()}
+
+    def load_state_dict(self, state: dict) -> None:
+        super().load_state_dict(state)
+        self.group_norm.load_state_dict(state["group_norm"])
+
+
+class LayerPCDM(LayerPCD):
+    """Per-layer PCD on separate momentum buffers (``pcdlm``), following :class:`DOT`.
+
+    m_CE <- beta_ce m_CE + g_CE, m_KD <- beta_kd m_KD + g_KD; the per-layer QP is solved on
+    (m_CE, m_KD) and each group is rescaled to ||m_CE^l||. Use with a momentum-free optimizer and
+    weight decay folded into the CE gradient by the trainer (as for DOT; ``w`` = loss weights).
+    """
+
+    name = "pcdlm"
+
+    def __init__(
+        self,
+        tau: float,
+        beta_ce: float = 0.9,
+        beta_kd: float = 0.9,
+        beta: float = 0.99,
+        eps: float = 1e-8,
+        rescale: bool = True,
+    ):
+        super().__init__(tau, beta, eps, rescale)
+        if not (0.0 <= beta_ce < 1.0 and 0.0 <= beta_kd < 1.0):
+            raise ValueError("beta_ce and beta_kd must be in [0, 1)")
+        self.betas = (float(beta_ce), float(beta_kd))
+        self.w = (1.0, 1.0)  # CE weight 1: the trainer's weight-decay term needs w[0]
+        self.buf: list[torch.Tensor] | None = None
+
+    def _inputs(self, g):
+        if self.buf is None:
+            self.buf = [torch.zeros_like(g[0]), torch.zeros_like(g[1])]
+        for i in range(2):
+            self.buf[i] = self.betas[i] * self.buf[i] + g[i]
+        return self.buf
+
+    def state_dict(self) -> dict:
+        return super().state_dict() | {
+            "buf": None if self.buf is None else [x.clone() for x in self.buf]
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        super().load_state_dict(state)
+        self.buf = None if state["buf"] is None else [x.clone() for x in state["buf"]]

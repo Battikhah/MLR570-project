@@ -34,6 +34,8 @@ from pcdkd.models import get_model
 from pcdkd.optim.combiners import PCD, NormalizedWeightedSum, PCGrad, WeightedSum
 from pcdkd.optim.combiners_extra import (
     DOT,
+    LayerPCD,
+    LayerPCDM,
     MinNorm,
     MultiWeightedSum,
     SymmetricPCGrad,
@@ -105,6 +107,10 @@ def make_combiner(spec):
         "mgda": lambda: MinNorm(False, rescale=p.get("rescale", True), beta=beta),
         "dto": lambda: MinNorm(True, rescale=p.get("rescale", False), beta=beta),
         "dot": lambda: DOT(p.get("delta", 0.075), spec["momentum"], p.get("lam", 0.9), beta),
+        "pcdl": lambda: LayerPCD(p["tau"], beta, rescale=p.get("rescale", True)),
+        "pcdlm": lambda: LayerPCDM(
+            p["tau"], p.get("beta_ce", spec["momentum"]), p.get("beta_kd", spec["momentum"]), beta
+        ),
     }
     if m not in table:
         raise ValueError(f"unknown method {m!r}")
@@ -246,6 +252,20 @@ def _objective_losses(spec, logits, s_feats, logps, t_feats, y):
     return out, mask
 
 
+def _param_groups(named):
+    """(group, numel) runs of the flattened parameters; group = first dotted name component."""
+    groups = []
+    for n, p in named:
+        key = n.split(".")[0]
+        if groups and groups[-1][0] == key:
+            groups[-1] = (key, groups[-1][1] + p.numel())
+        else:
+            groups.append((key, p.numel()))
+    if len({k for k, _ in groups}) != len(groups):
+        raise ValueError(f"parameter groups are not contiguous: {[k for k, _ in groups]}")
+    return groups
+
+
 def _flatten_info(info):
     flat = {}
     for k, v in info.items():
@@ -281,12 +301,17 @@ def train(
     torch.backends.cudnn.benchmark = True
     model = get_model(spec["arch"], data["classes"]).to(device)
     teachers = [t.to(device).eval() for t in teachers]
-    params = [p for p in model.parameters() if p.requires_grad]
+    named = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
+    params = [p for _, p in named]
     method = spec.get("method", "ce") if spec["kind"] == "student" else "ce"
     objectives = spec["objectives"] if method != "ce" else ["ce"]
     comb = make_combiner(spec) if method != "ce" else None
+    if hasattr(
+        comb, "set_groups"
+    ):  # layer-wise PCD: group = first name component (conv1, layer1..)
+        comb.set_groups(_param_groups(named))
     single = method in SINGLE_PASS
-    dot = method == "dot"
+    dot = method in ("dot", "pcdlm")  # own momentum buffers: optimizer momentum / wd off
     opt = torch.optim.SGD(
         params,
         lr=spec["lr"],
@@ -410,7 +435,11 @@ def train(
                 series.append(
                     {"step": step, "epoch": epoch}
                     | {k: rec[k] for k in TS_KEYS if k in rec and rec[k] is not None}
-                    | {k: v for k, v in rec.items() if k.startswith(("loss_", "shadow_", "mu_"))}
+                    | {
+                        k: v
+                        for k, v in rec.items()
+                        if k.startswith(("loss_", "shadow_", "mu_", "cos_group_"))
+                    }
                 )
             for k, v in losses.items():
                 sums[k] = sums.get(k, 0.0) + v.detach()
@@ -448,4 +477,5 @@ def train(
         "train_seconds": time.time() - t0,
         "steps": step,
         "device": device,
+        **({"param_groups": [n for n, _ in comb.groups]} if hasattr(comb, "groups") else {}),
     }

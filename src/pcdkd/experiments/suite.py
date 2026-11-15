@@ -120,6 +120,16 @@ def pcd(tau, primary="ce", **kw):
     return arm(name, "pcd", obj, primary, group=tag, tau=tau, **kw)
 
 
+def pcdl(tau, **kw):
+    """Per-layer PCD (decision 0004)."""
+    return arm(f"pcdl_t{tau}", "pcdl", group="pcdl", tau=tau, **kw)
+
+
+def pcdlm(tau, **kw):
+    """Per-layer PCD on separate CE / KD momentum buffers (decision 0004)."""
+    return arm(f"pcdlm_t{tau}", "pcdlm", group="pcdlm", tau=tau, **kw)
+
+
 PCGRAD = arm("pcgrad1s", "pcgrad", lam=1.0)
 MGDA = arm("mgda", "mgda")
 DTO = arm("dtokd", "dto")
@@ -228,6 +238,8 @@ SENS = (
     + [pcd(t, "kd") for t in (0.05, 0.25, 1.0, 4.0)]
 )
 
+TC_LAYERWISE_ARMS = [pcdl(0.5), pcdl(1.0), pcdlm(0.5), pcdlm(1.0)]
+
 FAMILIES = [
     _family(
         "lit-p1",
@@ -315,7 +327,13 @@ FAMILIES = [
         1,
         3,
         _sweep((0.0, 0.1, 0.3, 0.5, 0.7), "teacher_corruption", "rho{}"),
-        [*ARMS_REGIME, gated(nwkd(1.0)), gated(pcd(0.5)), gated(pcd(0.5, "kd"))],
+        [
+            *ARMS_REGIME,
+            gated(nwkd(1.0)),
+            gated(pcd(0.5)),
+            gated(pcd(0.5, "kd")),
+            *TC_LAYERWISE_ARMS,  # appended last: existing spec ids and content are unchanged
+        ],
         P0,
     ),
     _family(
@@ -561,7 +579,15 @@ TC_CORE_ARMS = (
     "ce", "pcd_t0.5", "pcd_t1.0", "nwkd_l0.5", "nwkd_l1.0", "wkd_l0.9", "dot_d0.075", "pcdrev_t0.5",
 )
 # Arms left out of blocks that select every arm (decision 0003); they still run in the tail.
-DEFERRED_ARMS = ("dtokd",)
+DEFERRED_ARMS = ("dtokd", *(a["arm"] for a in TC_LAYERWISE_ARMS))  # new arms: explicit blocks
+TC_CONDS = ("rho0.0", "rho0.5", "rho0.7")
+LN_CORE_ARMS = (
+    "ce", "pcd_t1.0", "pcdrev_t0.5", "pcdrev_t1.0", "nwkd_l1.0", "nwkd_l4.0", "wkd_l0.9",
+    "dot_d0.075",
+)
+NEW_TC_ARMS = tuple(a["arm"] for a in TC_LAYERWISE_ARMS)
+# Decision 0004: blocks 1-12 are the earlier plan (done or nearly done); the rest is ordered by
+# how much each block can change the paper's PCD conclusion.
 WEEKEND_PLAN = (
     (
         "lit-p1",
@@ -583,10 +609,13 @@ WEEKEND_PLAN = (
     ("temperature", (0,), None, None),
     ("multi-loss-dkd", (0,), None, None),
     ("pcd-ablations", (0,), None, None),
-    ("core-p1", (0,), None, None),
-    ("teacher-corruption", (3, 4), ("rho0.0", "rho0.5", "rho0.7"), TC_CORE_ARMS),
-    ("core-p0", (1, 2), None, None),
-    ("label-noise", (1,), None, None),
+    ("teacher-corruption", (0, 1, 2), TC_CONDS, NEW_TC_ARMS),  # a: per-layer PCD, paired s0-2
+    ("teacher-corruption", (3, 4), TC_CONDS, TC_CORE_ARMS),  # b: 5-seed confirmatory headline
+    ("label-noise", (1,), None, LN_CORE_ARMS),  # c: CE-first vs KD-first, second seed
+    ("core-p0", (1, 2), None, None),  # d
+    ("core-p1", (0,), None, None),  # e
+    ("teacher-corruption", (3, 4), TC_CONDS, NEW_TC_ARMS),  # f
+    ("label-noise", (1,), None, None),  # g: the old plan's order from here
     ("sensitivity", (0,), None, None),
     ("mve-cifar10", (1,), None, None),
     ("label-noise-noisy-teacher", (0,), None, None),
