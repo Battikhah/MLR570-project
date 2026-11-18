@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from pcdkd.experiments.runner import queue_tasks, teacher_paths
 from pcdkd.experiments.suite import PRIORITY, build_specs, queue_order
 from pcdkd.experiments.suite import cost as work_units
-from pcdkd.experiments.window import UAE, window_close
+from pcdkd.experiments.window import UAE, next_open, window_close
 
 STOP_MARGIN = timedelta(minutes=20)
 DIAG = ("cos_raw", "lambda_eff", "prop47_margin_actual")
@@ -274,7 +274,7 @@ class Scanner:
         now_dt = datetime.now(UAE)
         close = window_close(now_dt)
         if close is None:  # outside the window: show the next one
-            close = window_close(now_dt + timedelta(days=(3 - now_dt.weekday()) % 7, hours=12))
+            close = window_close(next_open(now_dt))
         stop = (close - STOP_MARGIN).timestamp() if close else now
 
         results = {}

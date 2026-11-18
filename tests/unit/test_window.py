@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pcdkd.experiments.window import UAE, StopGuard, window_close
+from pcdkd.experiments.window import UAE, StopGuard, next_open, window_close
 
 # 2026-11-12 is a Thursday; 2026-11-16 the following Monday.
 THU, MON = datetime(2026, 11, 12, tzinfo=UAE), datetime(2026, 11, 16, tzinfo=UAE)
@@ -26,6 +26,36 @@ CLOSE = MON.replace(hour=8)
 )
 def test_window_close(now, expected):
     assert window_close(now) == expected
+
+
+WED = datetime(2026, 11, 18, tzinfo=UAE)  # first night of the extension (until Mon 23 Nov 08:00)
+THU_8 = WED.replace(hour=8) + timedelta(days=1)
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (WED.replace(hour=19, minute=59), None),
+        (WED.replace(hour=20), THU_8),
+        (WED.replace(hour=23, minute=30), THU_8),
+        (THU_8 - timedelta(minutes=1), THU_8),
+        (THU_8, None),  # Thursday 08:00 to 18:00: classes
+        (WED.replace(hour=21) + timedelta(days=1), CLOSE + timedelta(days=7)),  # Thursday night
+        (CLOSE + timedelta(days=7), None),  # Monday 23 Nov 08:00: the extension has ended
+        (CLOSE + timedelta(days=7, hours=13), None),  # Monday 23 Nov 21:00: no nightly window
+        (MON + timedelta(days=1, hours=2), None),  # Tue 17 Nov 02:00: before the extension
+    ],
+)
+def test_nightly_extension(now, expected):
+    assert window_close(now) == expected
+
+
+def test_next_open():
+    thu_19_open = THU.replace(hour=18) + timedelta(days=7)
+    assert next_open(WED.replace(hour=12)) == WED.replace(hour=20)
+    assert next_open(WED.replace(hour=9) + timedelta(days=1)) == thu_19_open
+    assert next_open(CLOSE + timedelta(days=7)) == thu_19_open + timedelta(days=7)
+    assert next_open(MON + timedelta(days=1)) == WED.replace(hour=20)
 
 
 def test_window_uses_uae_time_whatever_the_machine_zone():
