@@ -48,7 +48,13 @@ def test_queue_order_matches_blocks_once_then_old_order_tail():
 
 def test_high_rho_core_seeds_come_before_low_rho_seeds_and_dtokd_is_deferred():
     q = queue_order(SCREEN)
-    tc = [s for s in q if s["family"] == "teacher-corruption" and s["seed"] in (1, 2)]
+    tc = [
+        s
+        for s in q
+        if s["family"] == "teacher-corruption"
+        and s["seed"] in (1, 2)
+        and s["arm"] in suite.TC_CORE_ARMS
+    ]
     first = tc[: 2 * 2 * len(suite.TC_CORE_ARMS)]
     assert {s["condition"] for s in first} == {"rho0.5", "rho0.7"}
     assert {s["arm"] for s in first} == set(suite.TC_CORE_ARMS)
@@ -56,6 +62,18 @@ def test_high_rho_core_seeds_come_before_low_rho_seeds_and_dtokd_is_deferred():
     planned = q[:plan_len]
     assert not any(s["arm"] == "dtokd" and s["family"] != "lit-p1" for s in planned)
     assert any(s["arm"] == "dtokd" for s in q[plan_len:])
+
+
+def test_extended_plan_runs_first_and_matched_weights_lead():
+    q = queue_order(SCREEN)
+    n = sum(1 for s in SCREEN if any(suite.in_block(s, b) for b in suite.EXTENDED_PLAN))
+    assert suite.WEEKEND_PLAN[: len(suite.EXTENDED_PLAN)] == suite.EXTENDED_PLAN
+    first = q[: 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
+    assert {s["arm"] for s in first} == {"nwkd_l0.25", "nwkd_l0.75"}
+    assert {s["family"] for s in first} == {"teacher-corruption"}
+    families = {"teacher-corruption", "core-p0", "lit-p1", "label-noise", "core-p1"}
+    assert {s["family"] for s in q[:n]} == families
+    assert not any(s["arm"] == "dtokd" and s["family"] != "core-p1" for s in q[:n])
 
 
 def test_weekend_plan_rejects_unknown_names(monkeypatch):

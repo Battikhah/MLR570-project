@@ -50,7 +50,7 @@ The workstation is reached through GlobalProtect and RDP, and its rules shape ho
 
 | Rule | What the suite does |
 |---|---|
-| Use only Thursday 18:00 to Monday 08:00 (UAE time); use outside it is monitored | `--window aus` refuses to start outside the window and, after each epoch, pauses with a checkpoint once fewer than 20 min (`--stop-margin-min`) plus 1.5 epochs remain. It also starts no new run in that period. |
+| Use only Thursday 18:00 to Monday 08:00 (UAE time), plus every night 20:00–08:00 from 18 to 23 November 2026 (decision 0005); use outside these hours is monitored | `--window aus` refuses to start outside the window and, after each epoch, pauses with a checkpoint once fewer than 20 min (`--stop-margin-min`) plus 1.5 epochs remain. It also starts no new run in that period. |
 | DeepFreeze wipes local data on any restart, power cut or crash | Runs write to the local disk (`$PCDKD_OUT`), and rclone copies results, teacher weights, run checkpoints and logs to Google Drive, `My Drive/pcd-suite/`, every 5 minutes (`-SyncMinutes`); each session after a wipe first pulls that copy back (skipped when local results survived; `-Restore` forces it), so runs resume. No Drive app is needed: rclone is a portable exe and signs in through the browser (scope `drive.file`, so it sees only its own files). The code is a git clone of this repo, pulled each session and re-cloned after a wipe; the Python environment and CIFAR are rebuilt locally. Each `result.json` records the commit it ran. A wipe loses at most the last upload interval plus `--ckpt-every` epochs of the run in progress. |
 | No admin rights, Windows | uv installs per user. The CUDA build of the locked torch version is installed from the PyTorch index, because PyPI's Windows wheels are CPU-only. The run keeps Windows from sleeping while it works. |
 
@@ -65,8 +65,9 @@ Steps:
 3. **Each window:** `run_weekend.ps1` (default: whole screen profile, 3 processes). It clears stale
    claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share the explicit
    `suite.WEEKEND_PLAN` blocks documented in `docs/decisions/0002-weekend-queue-revision.md` and
-   `docs/decisions/0003-high-rho-seeds.md`, and the current order in
-   `docs/decisions/0004-layerwise-pcd-and-priority-queue.md`; each
+   `docs/decisions/0003-high-rho-seeds.md` and `docs/decisions/0004-layerwise-pcd-and-priority-queue.md`,
+   now preceded by the follow-up blocks of `docs/decisions/0005-extended-access-plan.md`
+   (`suite.EXTENDED_PLAN`); each
    teacher is inserted just before its first user. Work not selected by a block remains in the
    original seed / `PRIORITY` / design order as a deferred tail. `-Family "label-noise ..."` narrows it.
 4. **When leaving:** keep the PowerShell window open (it does the uploads) and disconnect the RDP window. Do not sign out, because signing out ends the run.
@@ -75,7 +76,7 @@ Steps:
 
 **Profiles** change the schedule only; the design is the same:
 - `full`: 240 epochs, the family's seed count.
-- `screen`: 60 epochs, at most 2 seeds, except the weekend overrides in `PROFILES["screen"]["seed_overrides"]` (teacher-corruption 5, label-noise 3, core-p0 3, lit-p1 2; decision 0002). `lit-p1` keeps 240 epochs in every profile except smoke, because its only purpose is to match the published protocol.
+- `screen`: 60 epochs, at most 2 seeds, except the weekend overrides in `PROFILES["screen"]["seed_overrides"]` (teacher-corruption 5, label-noise 3, core-p0 3, core-p1 3, lit-p1 2; decisions 0002 and 0005). `lit-p1` keeps 240 epochs in every profile except smoke, because its only purpose is to match the published protocol.
 - `smoke`: synthetic data, 2 steps, on CPU. The tests use this profile.
 
 ## Protocol shared by every run
@@ -144,13 +145,13 @@ Tier 0 runs first, then tier 1. Tiers 2–3 broaden coverage.
 
 | Profile | Student runs | Full-dataset epoch-passes | Teachers |
 |---|---|---|---|
-| screen, tiers 0–1 | 1,001 | 118,020 | 4 (1 pre-trained) |
-| screen, all tiers | 1,737 | 195,791 | 15 (1 pre-trained) |
-| full, tiers 0–1 | 1,060 | 467,280 | 4 (1 pre-trained) |
-| full, all tiers | 2,014 | 868,865 | 15 (1 pre-trained) |
+| screen, tiers 0–1 | 1,203 | 142,907 | 4 (1 pre-trained) |
+| screen, all tiers | 1,939 | 220,678 | 15 (1 pre-trained) |
+| full, tiers 0–1 | 1,192 | 530,693 | 4 (1 pre-trained) |
+| full, all tiers | 2,146 | 932,278 | 15 (1 pre-trained) |
 
-From `run_suite.py list`; screen uses its per-family seed overrides and adds the `pcd_t2.0` arm to
-`lit-p1`. An epoch-pass is one pass over 45k images with one student backward (a 50k-image `lit-p1` epoch counts 50/45). GPU-hours = epoch-passes × the
+From `run_suite.py list` (2026-11-18, decision 0005's arms included); screen uses its per-family
+seed overrides. An epoch-pass is one pass over 45k images with one student backward (a 50k-image `lit-p1` epoch counts 50/45). GPU-hours = epoch-passes × the
 pilot's measured seconds per epoch-pass for each pair. ESTIMATE, unmeasured: at about 10 s per
 ResNet-8 epoch-pass, screen tiers 0–1 come to roughly 200 GPU-hours before running several shards
 per GPU. Run the pilot first and re-plan from its numbers.
@@ -182,7 +183,7 @@ pre-registered statistics in `refine-logs/EXPERIMENT_PLAN.md` (Holm correction, 
 
 ## Known limitations
 
-- **DTO-KD:** the exact rule only, without its feature projection or separate heads, and no amortised variant.
+- **DTO-KD:** the exact rule only, without its feature projection or separate heads, and no amortised variant. Its screen results sit below CE in every family, so it is out of every queue block and unreported until audited (decision 0005).
 - **DOT:** reimplemented as two heavy-ball buffers on flattened gradients, not mdistiller's optimizer. Weight decay enters the task buffer.
 - **Teachers:** trained here outside `lit-p1`, so those absolute numbers are not comparable with mdistiller's tables.
 - **`lit-p1`:** no validation set, so the analysis lists its arms without picking a best configuration ("no validation set" in the wins table) and none of its numbers may be used to tune anything.

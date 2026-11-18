@@ -51,7 +51,7 @@ def test_md_downsample_only_where_shape_changes():
 def test_lit_p1_specs():
     for profile in ("screen", "full"):
         students, teachers = build_specs(profile, families=["lit-p1"])
-        assert len(students) == (20 if profile == "screen" else 10)
+        assert len(students) == (22 if profile == "screen" else 11)
         assert {s["seed"] for s in students} == ({0, 1} if profile == "screen" else {0})
         assert {s["epochs"] for s in students} == {240}
         assert {s["val_size"] for s in students} == {0}
@@ -59,15 +59,19 @@ def test_lit_p1_specs():
         assert {s["arch"] for s in students} == {"md_resnet8x4"}
         assert {s["arm"] for s in students} == {
             "ce", "wkd_l0.9", "nwkd_l1.0", "pcd_t0.5", "pcd_t1.0", "pcd_t2.0",
-            "pcgrad1s", "mgda", "dtokd", "dot_d0.075",
+            "pcgrad1s", "mgda", "dtokd", "dot_d0.075", "pcdlm_t1.0",
         }  # fmt: skip
         assert {s["T"] for s in students} == {4.0}
         t = teachers[KEY]
         assert t["arch"] == "md_resnet32x4" and t["epochs"] == 0 and t["val_size"] == 0
         assert t["pretrained"]["file"].endswith("resnet32x4_vanilla/ckpt_epoch_240.pth")
         assert t["pretrained"]["key"] == "model"
+    # lit-p1 opened the first weekend's plan; the extended plan (decision 0005) now runs before it
+    from pcdkd.experiments import suite
+
+    assert suite.EARLIER_PLAN[0][0] == "lit-p1"
     screen, _ = build_specs("screen")
-    assert queue_order(screen)[0]["family"] == "lit-p1"
+    assert queue_order(screen)[0]["family"] == "teacher-corruption"
     smoke, smoke_t = build_specs("smoke", families=["lit-p1"])
     assert {s["epochs"] for s in smoke} == {1} and "pretrained" not in smoke_t[KEY]
 

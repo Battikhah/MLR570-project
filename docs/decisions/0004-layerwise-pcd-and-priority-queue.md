@@ -1,6 +1,6 @@
 # Decision 0004 — Per-layer PCD variants and a most-important-first queue
 
-- **Status:** Adopted for the remaining workstation window (ends Monday 07:40 UAE); amends the block order of decisions 0002 and 0003.
+- **Status:** Adopted for the remaining workstation window (ends Monday 07:40 UAE); amends the block order of decisions 0002 and 0003. Its blocks now run after those of decision 0005.
 - **Date:** 2026-11-15
 - **Scope:** Two new arms (code), four new arm specs in `teacher-corruption`, and the order of `suite.WEEKEND_PLAN`. Existing spec IDs and contents do not change.
 

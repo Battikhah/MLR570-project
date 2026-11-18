@@ -23,7 +23,9 @@ PROFILES = {
         "max_seeds": 2,
         "synthetic": False,
         "max_steps": None,
-        "seed_overrides": {"teacher-corruption": 5, "label-noise": 3, "core-p0": 3, "lit-p1": 2},
+        "seed_overrides": {
+            "teacher-corruption": 5, "label-noise": 3, "core-p0": 3, "core-p1": 3, "lit-p1": 2,
+        },
     },
     "smoke": {"epochs": 1, "max_seeds": 1, "synthetic": True, "max_steps": 2, "batch_size": 8},
 }
@@ -239,6 +241,10 @@ SENS = (
 )
 
 TC_LAYERWISE_ARMS = [pcdl(0.5), pcdl(1.0), pcdlm(0.5), pcdlm(1.0)]
+# Decision 0005: fixed NWKD weights at the lambda_eff PCD actually used (0.01-0.75), so PCD can be
+# compared with a fixed weight it matches; and PCDLM on the clean benchmarks.
+MATCHED_NWKD_ARMS = [nwkd(0.25), nwkd(0.75)]
+CLEAN_PCDLM_ARMS = [pcdlm(0.5), pcdlm(1.0)]
 
 FAMILIES = [
     _family(
@@ -249,7 +255,8 @@ FAMILIES = [
         0,
         1,
         [({}, "clean")],
-        [CE, wkd(0.9), nwkd(1.0), pcd(0.5), pcd(1.0), PCGRAD, MGDA, DTO, DOT_, pcd(2.0)],
+        [CE, wkd(0.9), nwkd(1.0), pcd(0.5), pcd(1.0), PCGRAD, MGDA, DTO, DOT_, pcd(2.0)]
+        + [pcdlm(1.0)],  # decision 0005, appended last
         P1_MD,
         val_size=0,  # no val set, so every arm runs at its paper/default setting (no grid)
         epochs=240,  # the protocol's length in every profile except smoke
@@ -283,7 +290,7 @@ FAMILIES = [
         1,
         5,
         [({}, "clean")],
-        ARMS_FULL,
+        [*ARMS_FULL, *CLEAN_PCDLM_ARMS],  # appended last (decision 0005)
         P1,
     ),
     _family(
@@ -293,7 +300,7 @@ FAMILIES = [
         1,
         5,
         [({}, "clean")],
-        ARMS_FULL,
+        [*ARMS_FULL, *CLEAN_PCDLM_ARMS],  # appended last (decision 0005)
         P0,
     ),
     _family(
@@ -333,6 +340,7 @@ FAMILIES = [
             gated(pcd(0.5)),
             gated(pcd(0.5, "kd")),
             *TC_LAYERWISE_ARMS,  # appended last: existing spec ids and content are unchanged
+            *MATCHED_NWKD_ARMS,  # decision 0005, appended after those
         ],
         P0,
     ),
@@ -345,7 +353,7 @@ FAMILIES = [
         3,
         [({"label_noise": e}, f"sym{e}") for e in (0.0, 0.2, 0.4, 0.6, 0.8)]
         + [({"label_noise": e, "noise_kind": "asymmetric"}, f"asym{e}") for e in (0.2, 0.4)],
-        [*ARMS_REGIME, pcd(0.1, "kd"), pcd(1.0, "kd"), nwkd(4.0)],
+        [*ARMS_REGIME, pcd(0.1, "kd"), pcd(1.0, "kd"), nwkd(4.0), pcdlm(1.0)],
         P0,
     ),
     _family(
@@ -586,9 +594,25 @@ LN_CORE_ARMS = (
     "dot_d0.075",
 )
 NEW_TC_ARMS = tuple(a["arm"] for a in TC_LAYERWISE_ARMS)
+# Decision 0005 (extended access, 18-23 Nov 2026): the runs the first weekend's results asked for
+# go first, most important first. Everything in EARLIER_PLAN keeps its order after them.
+EXTENDED_PLAN = (
+    # 1. is PCD's adaptive weight better than a fixed weight at the same level?
+    ("teacher-corruption", (0, 1, 2, 3, 4), None, tuple(a["arm"] for a in MATCHED_NWKD_ARMS)),
+    # 2. PCGrad, the strongest competitor, had one seed at rho 0.5 / 0.7
+    ("teacher-corruption", (0, 1, 2, 3, 4), None, ("pcgrad1s",)),
+    # 3-5. PCDLM (the best clean-teacher PCD variant) on the clean benchmarks and under label noise
+    ("core-p0", (0, 1, 2), None, tuple(a["arm"] for a in CLEAN_PCDLM_ARMS)),
+    ("lit-p1", (0, 1), None, ("pcdlm_t1.0", "pcd_t0.5", "pcd_t1.0", "mgda")),
+    ("label-noise", (0, 1), None, ("pcdlm_t1.0",)),
+    # 6. five seeds for the core arms at the low-rho points too
+    ("teacher-corruption", (3, 4), ("rho0.1", "rho0.3"), TC_CORE_ARMS),
+    # 7. the stronger-student benchmark, three seeds
+    ("core-p1", (0, 1, 2), None, None),
+)
 # Decision 0004: blocks 1-12 are the earlier plan (done or nearly done); the rest is ordered by
 # how much each block can change the paper's PCD conclusion.
-WEEKEND_PLAN = (
+EARLIER_PLAN = (
     (
         "lit-p1",
         (0,),
@@ -621,6 +645,7 @@ WEEKEND_PLAN = (
     ("label-noise-noisy-teacher", (0,), None, None),
     ("label-noise", (2,), None, None),
 )
+WEEKEND_PLAN = (*EXTENDED_PLAN, *EARLIER_PLAN)
 
 
 def in_block(s, block):

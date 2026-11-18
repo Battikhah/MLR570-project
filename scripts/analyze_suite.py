@@ -234,7 +234,8 @@ def main():
         w = csv.DictWriter(f, fieldnames=list(runs[0]))
         w.writeheader()
         w.writerows(runs)
-    errors = list(root.rglob("error.json"))
+    # an error.json next to a result.json is from an earlier attempt that a retry completed
+    errors = [e for e in root.rglob("error.json") if not e.with_name("result.json").exists()]
     print(f"{len(runs)} runs -> {root / 'REPORT.md'}, {root / 'runs.csv'}; {len(errors)} failed")
 
 

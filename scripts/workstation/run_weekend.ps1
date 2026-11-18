@@ -2,8 +2,10 @@
 Run the PCD suite on the AUS GPU workstation (ESB-1043-20) for one access window.
 
 Rules this script follows:
-  * Access only Thursday 18:00 - Monday 08:00 (UAE time). The Python runner refuses to start
-    outside the window and pauses with a checkpoint 20 minutes before it closes.
+  * Access only Thursday 18:00 - Monday 08:00 (UAE time), and from 18 to 23 November 2026 also
+    every night 20:00 - 08:00 (decision 0005). The Python runner refuses to start outside a window
+    and pauses with a checkpoint 20 minutes before it closes; start this script again at the next
+    window to continue.
   * DeepFreeze wipes the local disk on any restart. The code comes from git (this clone is
     pulled to the latest commit each session and re-cloned after a wipe). Runs write to the local
     disk, and rclone copies results, teacher weights, run checkpoints and logs to Google Drive
@@ -11,8 +13,8 @@ Rules this script follows:
     start of a session after a wipe (or with -Restore) the Drive copy is pulled back, so runs resume from their last checkpoint.
 
 What it runs: the whole suite (all 19 families of the chosen profile) as one queue shared by
--Procs processes on the GPU. It follows the explicit weekend plan in
-src/pcdkd/experiments/suite.py (WEEKEND_PLAN), then appends all deferred work in its legacy order.
+-Procs processes on the GPU. It follows the explicit plan in src/pcdkd/experiments/suite.py
+(WEEKEND_PLAN = EXTENDED_PLAN, then the earlier blocks), then all deferred work in its legacy order.
 Each teacher is trained just before the first run that needs it. Rerunning the same command next
 window continues where it stopped.
 
