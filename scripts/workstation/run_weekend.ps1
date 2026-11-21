@@ -9,8 +9,10 @@ Rules this script follows:
   * DeepFreeze wipes the local disk on any restart. The code comes from git (this clone is
     pulled to the latest commit each session and re-cloned after a wipe). Runs write to the local
     disk, and rclone copies results, teacher weights, run checkpoints and logs to Google Drive
-    (My Drive/pcd-suite) every -SyncMinutes, so a crash or wipe loses at most that much. At the
-    start of a session after a wipe (or with -Restore) the Drive copy is pulled back, so runs resume from their last checkpoint.
+    (My Drive/pcd-suite) every -SyncMinutes, so a crash or wipe loses at most that much. Every
+    -SnapshotMinutes it also uploads one archive of all outputs (snapshot/outputs.tgz). At the start
+    of a session after a wipe (or with -Restore) that archive is downloaded and extracted (one
+    request), then only files newer than it are copied, so runs resume from their last checkpoint.
 
 What it runs: the whole suite (all 19 families of the chosen profile) as one queue shared by
 -Procs processes on the GPU. It follows the explicit plan in src/pcdkd/experiments/suite.py
@@ -38,6 +40,7 @@ param(
   [string]$Family = "",         # optional subset, space-separated; default: every family
   [int]$Workers = 3,            # data-loading workers per process
   [int]$SyncMinutes = 5,        # how often results and checkpoints are copied to Google Drive
+  [int]$SnapshotMinutes = 60,   # how often one archive of all outputs is uploaded (fast restore)
   [string]$Remote = "gdrive",   # rclone remote name
   [string]$Data = "",           # CIFAR folder (e.g. on OneDrive); default: local, re-downloaded after a wipe
   [switch]$SetupOnly,
@@ -81,6 +84,19 @@ if (-not ((& $rclone listremotes) -contains "${Remote}:")) {
 }
 & $rclone mkdir "$Dest/outputs"
 if ($LASTEXITCODE -ne 0) { throw "Cannot write to Google Drive ($Dest)." }
+$Snap = Join-Path $Work "outputs-snapshot.tgz"
+function Push-Snapshot {
+  # One archive of outputs\, so a restore after a wipe is one download instead of thousands of
+  # rate-limited small-file requests. Written to a temp name first. tar exits non-zero when a worker
+  # deletes a finished run's checkpoint mid-archive; the archive is still usable, so a non-empty one
+  # is uploaded (a broken archive only means the next restore falls back to the file-by-file copy).
+  $tmp = "$Snap.tmp"
+  tar -czf $tmp -C $Work outputs 2>$null
+  if ((Test-Path $tmp) -and (Get-Item $tmp).Length -gt 0) {
+    Move-Item -Force $tmp $Snap
+    & $rclone copyto $Snap "$Dest/snapshot/outputs.tgz" -q
+  } else { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
+}
 function Push-Drive {
   # copy, never sync: nothing on Drive is ever deleted. Claims are per session; *.tmp are half-written.
   & $rclone copy $Out "$Dest/outputs" --exclude "claim" --exclude "*.claim" --exclude "*.tmp" --fast-list -q
@@ -95,7 +111,21 @@ $haveLocal = (Test-Path (Join-Path $Out $Profile)) -and
 if ($haveLocal -and -not $Restore) {
   Write-Host "Local results present (no wipe since the last session): skipping the Drive restore. Use -Restore to force it."
 } else {
-  Write-Host "Restoring earlier results from Google Drive; progress every 30 s (a large Drive can take several minutes) ..."
+  # Fast path: one archive (written by earlier sessions), then a top-up copy of newer files only.
+  $hasSnap = $false
+  try { $hasSnap = [bool](& $rclone lsf "$Dest/snapshot" --include "outputs.tgz" 2>$null) } catch {}
+  if ($hasSnap) {
+    Write-Host "Downloading the results snapshot from Google Drive (one file) ..."
+    & $rclone copyto "$Dest/snapshot/outputs.tgz" $Snap --stats 30s --stats-one-line --stats-log-level NOTICE
+    if ($LASTEXITCODE -eq 0) {
+      tar -xzf $Snap -C $Work
+      if ($LASTEXITCODE -ne 0) { Write-Host "Snapshot did not extract; falling back to the file-by-file restore." }
+      # same exclusions as the file-by-file restore: claims, half-written files, failures from old sessions
+      Get-ChildItem $Out -Recurse -File -Include claim, *.claim, *.tmp, error.json, *.error.json -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+  }
+  Write-Host "Restoring results newer than the snapshot (all of them if there is none); progress every 30 s ..."
   & $rclone copy "$Dest/outputs" $Out --ignore-existing --exclude "claim" --exclude "*.claim" --exclude "error.json" --exclude "*.error.json" --exclude "*.tmp" --fast-list --checkers 16 --transfers 8 --stats 30s --stats-one-line --stats-log-level NOTICE
   if ($LASTEXITCODE -ne 0) { throw "Could not restore earlier results from Google Drive." }
 }
@@ -182,11 +212,14 @@ $running = foreach ($i in 1..$Procs) {
 }
 Write-Host "$Procs workers running; logs in $Logs. Keep this window open (it uploads to Google Drive)."
 Write-Host "Disconnect RDP (do not sign out) to leave."
+$sinceSnap = [Diagnostics.Stopwatch]::StartNew()
 while ($running | Where-Object { -not $_.HasExited }) {
   $running | Wait-Process -Timeout ($SyncMinutes * 60) -ErrorAction SilentlyContinue
   Push-Drive
+  if ($sinceSnap.Elapsed.TotalMinutes -ge $SnapshotMinutes) { Push-Snapshot; $sinceSnap.Restart() }
 }
 Write-Host "Session finished. Results: Google Drive My Drive/pcd-suite/outputs"
 if ($dashboard) { taskkill /T /F /PID $dashboard.Id 2>$null | Out-Null }   # uv and its python child
 Stop-Transcript | Out-Null
 Push-Drive
+Push-Snapshot
