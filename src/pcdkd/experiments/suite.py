@@ -594,21 +594,38 @@ LN_CORE_ARMS = (
     "dot_d0.075",
 )
 NEW_TC_ARMS = tuple(a["arm"] for a in TC_LAYERWISE_ARMS)
-# Decision 0005 (extended access, 18-23 Nov 2026): the runs the first weekend's results asked for
-# go first, most important first. Everything in EARLIER_PLAN keeps its order after them.
+# Decision 0005 (extended access, 18-23 Nov 2026), reranked on 21 Nov for the ~35 GPU hours left:
+# most important first. Everything in EARLIER_PLAN keeps its order after these blocks.
 EXTENDED_PLAN = (
+    # A. the paper's two headline results
     # 1. is PCD's adaptive weight better than a fixed weight at the same level?
     ("teacher-corruption", (0, 1, 2, 3, 4), None, tuple(a["arm"] for a in MATCHED_NWKD_ARMS)),
     # 2. PCGrad, the strongest competitor, had one seed at rho 0.5 / 0.7
     ("teacher-corruption", (0, 1, 2, 3, 4), None, ("pcgrad1s",)),
-    # 3-5. PCDLM (the best clean-teacher PCD variant) on the clean benchmarks and under label noise
+    # 3. a third seed for the label-noise headline arms
+    ("label-noise", (2,), None, LN_CORE_ARMS),
+    # 4-6. PCDLM (the best clean-teacher PCD variant) on the clean benchmarks and under label noise
     ("core-p0", (0, 1, 2), None, tuple(a["arm"] for a in CLEAN_PCDLM_ARMS)),
     ("lit-p1", (0, 1), None, ("pcdlm_t1.0", "pcd_t0.5", "pcd_t1.0", "mgda")),
     ("label-noise", (0, 1), None, ("pcdlm_t1.0",)),
-    # 6. five seeds for the core arms at the low-rho points too
+    # B. untested "where PCD should win" hypotheses, and replications of single-seed findings
+    # 7. loss scale: the documented PCD strength (direction invariant to the KD loss scale)
+    ("loss-scale", (0,), None, None),
+    # 8. tuning robustness: equal 8-point grids for WKD, NWKD and PCD
+    ("sensitivity", (0,), ("clean", "rho0.3"), None),
+    # 9. label noise, the second seed of the remaining arms (matched weights, small tau)
+    ("label-noise", (1,), None, None),
+    # 10. K = 3, where PCD is no longer a single weighted sum
+    ("multi-loss-at", (0,), ("clean",), None),
+    # 11. second seeds of the temperature and ablation findings
+    ("temperature", (1,), None, None),
+    ("pcd-ablations", (1,), None, None),
+    # C. more seeds and the remaining stress tests
     ("teacher-corruption", (3, 4), ("rho0.1", "rho0.3"), TC_CORE_ARMS),
-    # 7. the stronger-student benchmark, three seeds
     ("core-p1", (0, 1, 2), None, None),
+    ("label-noise-noisy-teacher", (0,), None, None),
+    ("sensitivity", (0,), ("sym0.4",), None),
+    ("label-noise", (2,), None, None),
 )
 # Decision 0004: blocks 1-12 are the earlier plan (done or nearly done); the rest is ordered by
 # how much each block can change the paper's PCD conclusion.

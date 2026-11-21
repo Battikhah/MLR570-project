@@ -71,9 +71,9 @@ def test_extended_plan_runs_first_and_matched_weights_lead():
     first = q[: 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
     assert {s["arm"] for s in first} == {"nwkd_l0.25", "nwkd_l0.75"}
     assert {s["family"] for s in first} == {"teacher-corruption"}
-    families = {"teacher-corruption", "core-p0", "lit-p1", "label-noise", "core-p1"}
-    assert {s["family"] for s in q[:n]} == families
-    assert not any(s["arm"] == "dtokd" and s["family"] != "core-p1" for s in q[:n])
+    headline = {"teacher-corruption", "label-noise", "core-p0", "lit-p1"}
+    assert headline <= {s["family"] for s in q[:n]}
+    assert not any(s["arm"] == "dtokd" for s in q[:n])
 
 
 def test_weekend_plan_rejects_unknown_names(monkeypatch):

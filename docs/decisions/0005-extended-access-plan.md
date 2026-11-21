@@ -60,3 +60,27 @@ Runs left are counted against the 655 results on Drive. GPU hours use the measur
 - The matched-weight comparison (block 1) is the run a reviewer will ask for. If NWKD at a matched λ equals PCD, the paper reports PCD's robustness as coming from its bounded weight and not from conflict detection.
 - `dtokd` stays out of every block. Its results sit below CE in every family (for example 50.1 vs 55.4 on core-p0), which points to an implementation problem. It still runs in the tail, and nothing from it is reported until the rule (`MinNorm(log_loss=True)`, `optim/combiners_extra.py`) has been checked against the paper's Eqs. 11–12 and its step size.
 - After 23 November only the weekly window applies again. `NIGHTLY` is a single fixed period, so a further extension needs a new entry.
+
+## Reranking, 2026-11-21
+
+No run had started before Saturday 21 November, 20:38, which leaves about 35 GPU hours until Monday 07:40. `EXTENDED_PLAN` was reranked so that this time goes to the runs that can change the paper's claims, in three tiers:
+
+1. **The two headline results:**
+   - matched-weight NWKD;
+   - PCGrad seeds;
+   - a third label-noise seed for the core arms;
+   - PCDLM on core-p0, lit-p1 and label noise.
+2. **"Where PCD should win" hypotheses never run, and second seeds for single-seed findings:**
+   - loss-scale;
+   - sensitivity on clean and ρ0.3;
+   - label-noise seed 1;
+   - K = 3 attention transfer, clean;
+   - temperature and pcd-ablations at seed 1.
+3. **More seeds:**
+   - teacher corruption at ρ0.1/0.3;
+   - core-p1;
+   - the noisy-teacher label noise;
+   - sensitivity on sym0.4;
+   - the rest of label-noise seed 2.
+
+The blocks above total about 35 h at the measured pace. The tail (low-data, tau-sweep, multi-teacher, capacity-gap, long-tail and the rest) is not expected to run this window.
