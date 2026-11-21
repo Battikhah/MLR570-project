@@ -212,6 +212,7 @@ $running = foreach ($i in 1..$Procs) {
 }
 Write-Host "$Procs workers running; logs in $Logs. Keep this window open (it uploads to Google Drive)."
 Write-Host "Disconnect RDP (do not sign out) to leave."
+Push-Snapshot   # first archive right away, so the next restore after a wipe is one download
 $sinceSnap = [Diagnostics.Stopwatch]::StartNew()
 while ($running | Where-Object { -not $_.HasExited }) {
   $running | Wait-Process -Timeout ($SyncMinutes * 60) -ErrorAction SilentlyContinue
