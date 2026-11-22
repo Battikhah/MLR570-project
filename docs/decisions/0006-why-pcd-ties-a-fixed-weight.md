@@ -11,7 +11,7 @@
 
 ## Context
 
-These are the results of the extended window up to Sunday 22 Nov, 09:23 (784 runs; my own aggregation of the `result.json` files on Drive, not yet committed as a snapshot).
+These are the results of the extended window up to Sunday 22 Nov, 09:23 (784 runs). The same numbers, from the 10:08 copy (786 runs), are committed in `research/results/screen-2026-11-22/`.
 
 **VERIFIED, 5 seeds, teacher corruption:**
 - PCD ties NWKD at the fixed weight matching its average λ_eff at every ρ:

@@ -10,15 +10,24 @@ The experiments compare PCD with the usual fixed-weight sums and with the multi-
 
 The survey paper that chose these baselines lives in a separate repository, `Battikhah/MLR570-survey`.
 
-## Where the project stands (18 November 2026)
+## Where the project stands (22 November 2026)
 
-- **Done:** 655 screening runs from the first GPU weekend (14–16 Nov).
-- **Results:** `research/results/screen-2026-11-16/` holds the full tables. What they show so far:
-  - **With a corrupted teacher, PCD holds the no-teacher accuracy.** Standard KD and DOT lose 15–17 pp at 70% corruption, and PCD τ1.0 beats DOT there by 12.7 pp (5 seeds). A fixed normalised weight of 0.5 (NWKD 0.5) protects about as well, so the protection comes from PCD keeping its KD weight small.
-  - **With a good teacher, PCD matches the best tuned weighted sum.** It trails DOT and PCGrad by about 1–2 pp.
-  - **The pipeline reproduces the literature.** On the literature-matched setup (CRD's ResNet32x4 teacher, mdistiller protocol), our KD gives 73.05 against the published 73.33, and our DOT 74.87 against the published 75.12.
-  - **DTO-KD is not trustworthy yet.** It scores below CE everywhere, which points to a problem in our implementation. It is not reported until audited.
-- **Next:** the follow-up runs, queued for the extended access window of 18–23 Nov. See [decision 0005](docs/decisions/0005-extended-access-plan.md). They answer whether PCD's adaptive weight beats a fixed weight at the same level, add seeds for PCGrad, and test PCDLM, the per-layer PCD variant on separate momentum buffers, on the clean benchmarks.
+**Start with [`docs/project-story.md`](docs/project-story.md).** It defines every term, walks through decisions 0001–0006 with the evidence that triggered each one, and summarises the results.
+
+- **Runs so far:** 786 screening runs (655 from the first weekend, 14–16 Nov, plus 131 from the extended window that is still running). Latest tables and figures: [`research/results/screen-2026-11-22/`](research/results/screen-2026-11-22/README.md).
+- **Main result (VERIFIED, 5 seeds):** PCD's adaptive KD weight gives the same accuracy as a fixed weight of the same size, at every level of teacher corruption.
+  - The fixed-weight control (NWKD) is PCD with the adaptive weight switched off, planned as the main control from the start (decision 0001).
+  - The diagnostics show why: PCD's weight barely moves within a run, because the agreement between the CE and KD gradients is set by the teacher's error rate, which is fixed.
+- **Under a bad teacher (VERIFIED, 5 seeds):** only a small KD weight is safe.
+  - PCD τ0.5 stays at the no-teacher accuracy.
+  - PCD τ1.0 ends 1.8 pp below it, because its weight grows as the teacher gets worse.
+  - Standard KD and DOT end 14–15 pp below it.
+- **With a good teacher (VERIFIED):** DOT and PCGrad beat PCD and every fixed weight by about 1.2–2 pp. Choosing the KD weight better cannot close that gap.
+- **The pipeline reproduces the literature:** on CRD's ResNet32x4 → ResNet8x4 with the mdistiller protocol, our KD gives 73.05 against the published 73.33, and our DOT 74.87 against 75.12.
+- **DTO-KD is not reported:** it scores below CE everywhere, which points to a problem in our implementation. It is under audit.
+- **Running now ([decision 0006](docs/decisions/0006-why-pcd-ties-a-fixed-weight.md)):** a teacher that turns bad halfway through training, the one setting where an adaptive weight can differ from a fixed one, and more seeds for the per-sample reliability gate.
+
+![PCD at its average weight next to fixed weights](research/results/screen-2026-11-22/figures/matched-weights.png)
 
 ## Repository layout
 
@@ -32,10 +41,11 @@ The survey paper that chose these baselines lives in a separate repository, `Bat
 | `src/pcdkd/experiments/` | `suite.py` defines the families, arms, profiles and run order. `runner.py` trains teachers and students from a shared queue. `window.py` enforces the workstation's access hours. |
 | `scripts/` | `run_suite.py` (list or run the suite), `analyze_suite.py` (report and CSV), `dashboard.py` (live progress page), `fetch_cifar.py`, `workstation/run_weekend.ps1` |
 | `tests/` | Unit and integration tests. They run on CPU with synthetic data. |
+| `docs/project-story.md` | **Read first.** Definitions, every decision and why it was made, the results, the pre-registered predictions checked, and the deviations from the plan |
 | `docs/experiment-suite.md` | The full design: every family, its hypothesis, arms, protocol, cost and known limitations |
-| `docs/decisions/` | Decision records 0001–0005: research objective, queue revisions, per-layer PCD, extended access |
+| `docs/decisions/` | Decision records 0001–0006, indexed in `docs/decisions/README.md`: research objective, queue revisions, per-layer PCD, extended access, the teacher-switch test |
 | `docs/requirements/`, `docs/reviews/` | Assignment requirements taken from `Project Files/`; cross-agent review records |
-| `research/results/` | Committed result snapshots (CSV, report, summary). Raw outputs stay on Google Drive. |
+| `research/results/` | Committed result snapshots: `screen-2026-11-16/` and `screen-2026-11-22/` (CSV, report, diagnostics, figures, and `tables.py`/`figures.py` that rebuild every number). Raw outputs stay on Google Drive. |
 | `configs/`, `paper/` | Base experiment configs; survey-revision notes (the survey itself is in `MLR570-survey`) |
 | `research/`, `refine-logs/`, `idea-stage/` | Notes, the pre-registered experiment plan (`refine-logs/EXPERIMENT_PLAN.md`), and the proposal |
 | `literature/` | Source registry (`sources.yaml`) with verification notes. PDFs stay local. |
@@ -70,7 +80,7 @@ There are three profiles:
 
 Each run is keyed by an ID such as `teacher-corruption/rho0.7/pcd_t1.0/s3`. Its `result.json` stores the full spec, the test and validation metrics, the diagnostics and the git commit. Finished runs are skipped. Interrupted runs resume from their last checkpoint.
 
-**Run order.** `--queue` processes share one ordered list, and each takes the next unclaimed run. The order is `suite.WEEKEND_PLAN`: the follow-up blocks of decision 0005 first, then the earlier blocks of decisions 0002–0004, then everything else. Each teacher is trained just before its first student.
+**Run order.** `--queue` processes share one ordered list, and each takes the next unclaimed run. The order is `suite.WEEKEND_PLAN`: the follow-up blocks of decisions 0006 and 0005 first, then the earlier blocks of decisions 0002–0004, then everything else. Each teacher is trained just before its first student.
 
 **Rule for new arms or seeds.** Add them at the end of a family's list so that no existing run ID or spec changes. The tests check the plan for typos and check that every run appears exactly once.
 

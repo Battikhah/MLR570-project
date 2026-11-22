@@ -1,5 +1,7 @@
 # Screen results after the first weekend (snapshot 2026-11-16)
 
+> **Superseded by [`../screen-2026-11-22/`](../screen-2026-11-22/README.md).** One correction: the first interpretation bullet below holds for PCD τ0.5 only. PCD τ1.0 ends 1.81 pp [1.30, 2.32] below CE at ρ0.7 (5 seeds).
+
 ## What is in this folder
 
 - **`runs.csv`:** one row per finished run, 655 runs.
