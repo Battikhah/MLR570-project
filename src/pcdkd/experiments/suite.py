@@ -25,6 +25,7 @@ PROFILES = {
         "max_steps": None,
         "seed_overrides": {
             "teacher-corruption": 5, "label-noise": 3, "core-p0": 3, "core-p1": 3, "lit-p1": 2,
+            "teacher-switch": 5,
         },
     },
     "smoke": {"epochs": 1, "max_seeds": 1, "synthetic": True, "max_steps": 2, "batch_size": 8},
@@ -245,6 +246,9 @@ TC_LAYERWISE_ARMS = [pcdl(0.5), pcdl(1.0), pcdlm(0.5), pcdlm(1.0)]
 # compared with a fixed weight it matches; and PCDLM on the clean benchmarks.
 MATCHED_NWKD_ARMS = [nwkd(0.25), nwkd(0.75)]
 CLEAN_PCDLM_ARMS = [pcdlm(0.5), pcdlm(1.0)]
+# Decision 0006: the teacher turns bad halfway through training, so the CE-KD agreement changes
+# within a run; the one setting where an adaptive weight can differ from a fixed one (Cor. 4.6).
+SWITCH_ARMS = [nwkd(0.25), nwkd(0.75), pcd(0.5), pcd(1.0), pcd(0.5, "kd"), pcd(1.0, "kd")]
 
 FAMILIES = [
     _family(
@@ -476,6 +480,21 @@ FAMILIES = [
         ],
         P0,
     ),
+    _family(
+        "teacher-switch",
+        "Teacher clean for the first half of training, then corrupted (the same per-sample map "
+        "as teacher-corruption). CE-primary PCD raises its KD weight when the teacher turns bad; "
+        "KD-primary PCD raises its CE weight. Fixed NWKD weights are the matched controls; "
+        "CE comes from teacher-corruption (same data and seeds; CE ignores the teacher).",
+        1,
+        3,
+        [
+            ({"teacher_corruption": r, "corrupt_from": 0.5}, f"rho{r}_from0.5")
+            for r in (0.5, 0.7)
+        ],
+        SWITCH_ARMS,
+        P0,
+    ),
 ]
 
 FAMILY_NAMES = [f["name"] for f in FAMILIES]
@@ -577,6 +596,7 @@ PRIORITY = (
     "multi-loss-at",
     "label-noise-noisy-teacher",
     "sensitivity",
+    "teacher-switch",
 )
 
 
@@ -597,6 +617,11 @@ NEW_TC_ARMS = tuple(a["arm"] for a in TC_LAYERWISE_ARMS)
 # Decision 0005 (extended access, 18-23 Nov 2026), reranked on 21 Nov for the ~35 GPU hours left:
 # most important first. Everything in EARLIER_PLAN keeps its order after these blocks.
 EXTENDED_PLAN = (
+    # Decision 0006 (22 Nov): the two tests of why PCD ties a fixed weight, ahead of the rest
+    # 0a. per-sample gate under heavy corruption (1 seed so far at rho 0.5 / 0.7)
+    ("teacher-corruption", (1, 2, 3, 4), ("rho0.5", "rho0.7"), ("g_pcd_t0.5", "g_nwkd_l1.0")),
+    # 0b. a teacher whose quality changes within the run
+    ("teacher-switch", (0, 1, 2, 3, 4), None, None),
     # A. the paper's two headline results
     # 1. is PCD's adaptive weight better than a fixed weight at the same level?
     ("teacher-corruption", (0, 1, 2, 3, 4), None, tuple(a["arm"] for a in MATCHED_NWKD_ARMS)),

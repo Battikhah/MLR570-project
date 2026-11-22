@@ -191,17 +191,22 @@ def _lr_at(spec, epoch):
     return lr
 
 
-def _teacher_targets(spec, teachers, x, idx, labels, data, device, need_feats):
+def _corruption_active(spec, epoch):
+    """Teacher corruption applies from ``corrupt_from`` (a fraction of training; 0 = always)."""
+    return epoch >= round(spec.get("corrupt_from", 0.0) * spec["epochs"])
+
+
+def _teacher_targets(spec, teachers, x, idx, labels, data, device, need_feats, epoch=0):
     """Return per-teacher log-probs (T=1), teacher-0 features, corruption flags for the batch."""
     logps, feats = [], None
+    cmap = data["corruption_map"] if _corruption_active(spec, epoch) else {}
     for j, t in enumerate(teachers):
         with torch.no_grad():
             out = t(x, return_features=need_feats and j == 0)
         if need_feats and j == 0:
             out, feats = out
         lp = F.log_softmax(out.float(), -1)
-        if j == spec.get("corrupt_teacher", 0) and data["corruption_map"]:
-            cmap = data["corruption_map"]
+        if j == spec.get("corrupt_teacher", 0) and cmap:
             rows = {r: cmap[int(i)] for r, i in enumerate(idx.tolist()) if int(i) in cmap}
             if rows:
                 clean = data["clean_labels"][idx].numpy()
@@ -219,7 +224,7 @@ def _teacher_targets(spec, teachers, x, idx, labels, data, device, need_feats):
                     .to(device)
                 )
         logps.append(lp)
-    flags = torch.tensor([int(i) in data["corruption_map"] for i in idx.tolist()])
+    flags = torch.tensor([int(i) in cmap for i in idx.tolist()], dtype=torch.bool)
     return logps, feats, flags
 
 
@@ -385,7 +390,7 @@ def train(
             logps, t_feats, flags = [], None, torch.zeros(len(idx), dtype=torch.bool)
             if method != "ce":
                 logps, t_feats, flags = _teacher_targets(
-                    spec, teachers, x, idx, labels_all, data, device, need_feats
+                    spec, teachers, x, idx, labels_all, data, device, need_feats, epoch
                 )
             if method == "ce":
                 losses, mask = {"ce": F.cross_entropy(logits, y)}, None

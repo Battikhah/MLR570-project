@@ -66,7 +66,7 @@ Steps:
    claims, then starts `-Procs` workers of `run_suite.py run --queue`. They share the explicit
    `suite.WEEKEND_PLAN` blocks documented in `docs/decisions/0002-weekend-queue-revision.md` and
    `docs/decisions/0003-high-rho-seeds.md` and `docs/decisions/0004-layerwise-pcd-and-priority-queue.md`,
-   now preceded by the follow-up blocks of `docs/decisions/0005-extended-access-plan.md`
+   now preceded by the follow-up blocks of `docs/decisions/0005-extended-access-plan.md` (whose first two blocks come from `docs/decisions/0006-why-pcd-ties-a-fixed-weight.md`)
    (`suite.EXTENDED_PLAN`); each
    teacher is inserted just before its first user. Work not selected by a block remains in the
    original seed / `PRIORITY` / design order as a deferred tail. `-Family "label-noise ..."` narrows it.
@@ -76,7 +76,7 @@ Steps:
 
 **Profiles** change the schedule only; the design is the same:
 - `full`: 240 epochs, the family's seed count.
-- `screen`: 60 epochs, at most 2 seeds, except the weekend overrides in `PROFILES["screen"]["seed_overrides"]` (teacher-corruption 5, label-noise 3, core-p0 3, core-p1 3, lit-p1 2; decisions 0002 and 0005). `lit-p1` keeps 240 epochs in every profile except smoke, because its only purpose is to match the published protocol.
+- `screen`: 60 epochs, at most 2 seeds, except the weekend overrides in `PROFILES["screen"]["seed_overrides"]` (teacher-corruption 5, label-noise 3, core-p0 3, core-p1 3, lit-p1 2, teacher-switch 5; decisions 0002, 0005 and 0006). `lit-p1` keeps 240 epochs in every profile except smoke, because its only purpose is to match the published protocol.
 - `smoke`: synthetic data, 2 steps, on CPU. The tests use this profile.
 
 ## Protocol shared by every run
@@ -122,6 +122,7 @@ Tier 0 runs first, then tier 1. Tiers 2–3 broaden coverage.
 | 1 | `core-p1`, `core-p0` | all 17 two-objective arms, clean | match or beat NWKD only if c varies within training; tie with NWKD if c is steady | Cor. 4.6; I1* |
 | 1 | `loss-scale` | L_KD × m, m ∈ 10^{−2..2} | **excel**: direction invariant to m (EMA normalisation), while raw WKD/PCGrad degrade. DTO-KD and NWKD are also invariant, so the win is over *raw* KD only | PCD §5.1.1: its wins come from scale; `test_pcd_mechanism.py` |
 | 1 | `teacher-corruption` | ρ ∈ {0, 0.1, 0.3, 0.5, 0.7}, ± gate | CE-primary **lose** at high ρ (its KD weight max(0, τ−c) grows with conflict); the gate and KD-primary are the contrasts | decision 0001, Prop. 4.7 |
+| 1 | `teacher-switch` | teacher clean for the first half, then ρ ∈ {0.5, 0.7} (`corrupt_from: 0.5`) | c changes within the run, so PCD can differ from a fixed weight. CE-primary is predicted to **lose** (its KD weight rises when the teacher turns bad) and KD-primary to **excel** (its CE weight rises). HYPOTHESIS | Cor. 4.6; decision 0006 |
 | 1 | `label-noise` | η ∈ {0, 0.2, …, 0.8} symmetric + asymmetric, clean teacher | **excel with `pcdrev`**: the reliable teacher is the anchor and noisy CE gets only τ-progress. Most promising regime (HYPOTHESIS) | priority order; `test_priority_order…` |
 | 1 | `low-data` | 1–100% of labels, iteration-matched | excel if few labels create strong, varying conflict | DHO measured c ≈ −0.4…−0.76 few-shot |
 | 2 | `long-tail` | imbalance factor 1–200 (teacher trained on the same long-tailed set) | help on few-shot classes, if per-batch class mix drives c | INTERPRETATION |
@@ -145,12 +146,12 @@ Tier 0 runs first, then tier 1. Tiers 2–3 broaden coverage.
 
 | Profile | Student runs | Full-dataset epoch-passes | Teachers |
 |---|---|---|---|
-| screen, tiers 0–1 | 1,203 | 142,907 | 4 (1 pre-trained) |
-| screen, all tiers | 1,939 | 220,678 | 15 (1 pre-trained) |
-| full, tiers 0–1 | 1,192 | 530,693 | 4 (1 pre-trained) |
-| full, all tiers | 2,146 | 932,278 | 15 (1 pre-trained) |
+| screen, tiers 0–1 | 1,263 | 150,107 | 4 (1 pre-trained) |
+| screen, all tiers | 1,999 | 227,878 | 15 (1 pre-trained) |
+| full, tiers 0–1 | 1,228 | 547,973 | 4 (1 pre-trained) |
+| full, all tiers | 2,182 | 949,558 | 15 (1 pre-trained) |
 
-From `run_suite.py list` (2026-11-18, decision 0005's arms included); screen uses its per-family
+From `run_suite.py list` (2026-11-22, decisions 0005 and 0006 included); screen uses its per-family
 seed overrides. An epoch-pass is one pass over 45k images with one student backward (a 50k-image `lit-p1` epoch counts 50/45). GPU-hours = epoch-passes × the
 pilot's measured seconds per epoch-pass for each pair. ESTIMATE, unmeasured: at about 10 s per
 ResNet-8 epoch-pass, screen tiers 0–1 come to roughly 200 GPU-hours before running several shards

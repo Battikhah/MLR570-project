@@ -68,7 +68,12 @@ def test_extended_plan_runs_first_and_matched_weights_lead():
     q = queue_order(SCREEN)
     n = sum(1 for s in SCREEN if any(suite.in_block(s, b) for b in suite.EXTENDED_PLAN))
     assert suite.WEEKEND_PLAN[: len(suite.EXTENDED_PLAN)] == suite.EXTENDED_PLAN
-    first = q[: 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
+    # decision 0006: the gated seeds, then the teacher switch, then the matched weights
+    gated, rest = q[:16], q[16:]
+    assert {s["arm"] for s in gated} == {"g_pcd_t0.5", "g_nwkd_l1.0"}
+    assert {s["condition"] for s in gated} == {"rho0.5", "rho0.7"}
+    assert {s["family"] for s in rest[:60]} == {"teacher-switch"}
+    first = rest[60 : 60 + 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
     assert {s["arm"] for s in first} == {"nwkd_l0.25", "nwkd_l0.75"}
     assert {s["family"] for s in first} == {"teacher-corruption"}
     headline = {"teacher-corruption", "label-noise", "core-p0", "lit-p1"}
