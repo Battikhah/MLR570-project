@@ -39,7 +39,7 @@ The survey paper that chose these baselines lives in a separate repository, `Bat
 | `src/pcdkd/data/` | CIFAR loading, train/val splits, label noise, long-tail and low-data subsets, teacher corruption |
 | `src/pcdkd/train/trainer.py` | One training run: per-objective gradients, combiner, SGD, checkpoints, diagnostics every 50 steps |
 | `src/pcdkd/experiments/` | `suite.py` defines the families, arms, profiles and run order. `runner.py` trains teachers and students from a shared queue. `window.py` enforces the workstation's access hours. |
-| `scripts/` | `run_suite.py` (list or run the suite), `analyze_suite.py` (report and CSV), `dashboard.py` (live progress page), `fetch_cifar.py`, `workstation/run_weekend.ps1` |
+| `scripts/` | `run_suite.py` (list or run the suite), `analyze_suite.py` (report and CSV), `dashboard.py` (live progress page), `fetch_cifar.py`, `workstation/run_weekend.ps1`, `colab/` (notebook and launcher for a Colab GPU) |
 | `tests/` | Unit and integration tests. They run on CPU with synthetic data. |
 | `docs/project-story.md` | **Read first.** Definitions, every decision and why it was made, the results, the pre-registered predictions checked, and the deviations from the plan |
 | `docs/experiment-suite.md` | The full design: every family, its hypothesis, arms, protocol, cost and known limitations |
@@ -121,6 +121,24 @@ The script then does the following, in order:
 `U:\pcd-data` survives DeepFreeze, so CIFAR and the CRD teachers are downloaded only once.
 
 When you leave, keep the PowerShell window open and close the RDP window. Do not sign out, because signing out stops the run. After each window closes, start the script again at the next one; it continues where it stopped.
+
+## Running on Google Colab
+
+[`scripts/colab/pcd_colab.ipynb`](scripts/colab/pcd_colab.ipynb) continues the same queue on a Colab GPU. Open it in Colab (*File → Upload notebook*, or *GitHub* with access to this private repo) and run the cells in order.
+
+Before you start:
+- **A GPU runtime.** A T4 is enough.
+- **A Colab secret named `GITHUB_TOKEN`** with read access to this repo.
+- **Drive mounted** with the Google account that holds `My Drive/pcd-suite`.
+
+[`scripts/colab/run_colab.sh`](scripts/colab/run_colab.sh) does the work, in order:
+1. Restores results from that Drive folder.
+2. Installs the same torch build as the workstation (2.14.1, CUDA 12.6).
+3. Runs the CPU tests.
+4. Starts 2 workers.
+5. Copies new results, checkpoints and logs back to Drive every 5 minutes.
+
+There is no access window on Colab. If the session drops, run all cells again: finished runs are skipped, and unfinished ones resume from their last checkpoint. Don't run Colab and the workstation at the same time, because their claims are not shared and both would train the same runs.
 
 To analyse on a laptop:
 
