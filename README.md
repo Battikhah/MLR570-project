@@ -128,18 +128,17 @@ When you leave, keep the PowerShell window open and close the RDP window. Do not
 
 ## Running on Google Colab
 
-[`scripts/colab/pcd_colab.ipynb`](scripts/colab/pcd_colab.ipynb) continues the same queue on a Colab GPU. Open it in Colab (*File → Upload notebook*, or *GitHub* with access to this private repo) and run the cells in order.
+[`scripts/colab/pcd_colab.ipynb`](scripts/colab/pcd_colab.ipynb) continues the same queue on a Colab GPU. Open it in Colab (*File → Upload notebook*, or *File → Open notebook → GitHub*) and run the cells in order.
 
 Before you start:
-- **A GPU runtime.** A T4 is enough.
-- **A Colab secret named `GITHUB_TOKEN`** with read access to this repo.
-- **Drive mounted** with the Google account that holds `My Drive/pcd-suite`.
+- **A GPU runtime.** A T4 is enough; use an L4 when the T4s are full.
+- **The `pcd-suite` Drive folder reachable from the Colab account,** shared as Editor. A folder shared from another account needs a shortcut in My Drive (*Shared with me → Organize → Add shortcut*).
 
 [`scripts/colab/run_colab.sh`](scripts/colab/run_colab.sh) does the work, in order:
-1. Restores results from that Drive folder.
+1. Restores from that Drive folder. With `FAMILY` set (the notebook's default), this is quick: only the teachers, a small marker for each finished run of those families, and the checkpoints of unfinished runs. The markers are never copied back. With `FAMILY` empty, it extracts the 1.2 GB snapshot first.
 2. Installs the same torch build as the workstation (2.14.1, CUDA 12.6).
 3. Runs the CPU tests.
-4. Starts 2 workers.
+4. Starts the workers (3 by default in the notebook).
 5. Copies new results, checkpoints and logs back to Drive every 5 minutes.
 
 There is no access window on Colab. If the session drops, run all cells again: finished runs are skipped, and unfinished ones resume from their last checkpoint. Don't run Colab and the workstation at the same time, because their claims are not shared and both would train the same runs.

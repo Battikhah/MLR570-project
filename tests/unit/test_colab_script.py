@@ -46,8 +46,38 @@ def test_restore_then_push(tmp_path):
 
     _bash(
         tmp_path,
-        f'sleep 1; mkdir -p "$WORK/{run}/s2"; echo r > "$WORK/{run}/s2/result.json"; '
+        f'sleep 1; mkdir -p "$WORK/{run}/s2"; printf "%05000d" 0 > "$WORK/{run}/s2/result.json"; '
         f'echo c > "$WORK/{run}/s2/claim"; push',
     )
     assert (drive / run / "s2/result.json").exists()
     assert not (drive / run / "s2/claim").exists()
+
+
+def test_quick_restore_marks_finished_runs_and_never_pushes_the_markers(tmp_path):
+    drive, run = tmp_path / "drive", "outputs/screen/fam/c/a"
+    _write(drive / "outputs/screen/teachers/t.pt")
+    _write(drive / "outputs/screen/teachers/t.claim")
+    real = "x" * 4096  # a real result.json is hundreds of KB
+    _write(drive / run / "s0/result.json", real)
+    _write(drive / run / "s1/checkpoint.pt")
+    _write(drive / "outputs/screen/other/c/a/s0/result.json", real)  # family not selected
+
+    _bash(tmp_path, "export FAMILY=fam; restore")
+    work = tmp_path / "work"
+    got = {p.relative_to(work).as_posix() for p in work.rglob("*") if p.is_file()}
+    assert got == {
+        ".restored",
+        "outputs/screen/teachers/t.pt",
+        f"{run}/s0/result.json",
+        f"{run}/s1/checkpoint.pt",
+    }
+    assert "placeholder" in (work / run / "s0/result.json").read_text()
+
+    # a marker touched after the restore is still never sent; a real new result is
+    _bash(
+        tmp_path,
+        f'sleep 1; touch "$WORK/{run}/s0/result.json"; mkdir -p "$WORK/{run}/s2"; '
+        f'printf "%05000d" 0 > "$WORK/{run}/s2/result.json"; push',
+    )
+    assert (drive / run / "s0/result.json").read_text() == real
+    assert (drive / run / "s2/result.json").stat().st_size == 5000

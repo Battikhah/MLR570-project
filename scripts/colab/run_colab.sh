@@ -7,8 +7,10 @@
 #   * Runs write to the local disk (fast). Every SYNC_MIN minutes, results, checkpoints and logs are
 #     copied to Drive. The copy never deletes anything. A disconnect loses at most that much, and
 #     the next session resumes from the last checkpoint.
-#   * At the start, the earlier results come back from Drive, so the queue skips finished runs:
-#     the snapshot archive first (one file), then the files that are newer than it.
+#   * At the start, the earlier results come back from Drive, so the queue skips finished runs.
+#     With FAMILY set (quick restore): only the teachers, a tiny marker per finished run of those
+#     families (never copied back) and the checkpoints of unfinished ones; nothing large is read.
+#     With FAMILY empty: the snapshot archive (1.2 GB, one file), then the files newer than it.
 #   * torch is the same build the workstation ran (2.14.1, CUDA 12.6), so results stay comparable.
 #
 # Usage: run it from the notebook scripts/colab/pcd_colab.ipynb, or in a Colab terminal:
@@ -41,6 +43,7 @@ restore() {
     return
   fi
   mkdir -p "$OUT"
+  if [[ -n "$FAMILY" ]]; then quick_restore; touch "$WORK/.restored"; return; fi
   if [[ -f "$DRIVE/snapshot/outputs.tgz" ]]; then
     echo "Extracting the results snapshot from Drive (one file) ..."
     tar -xzf "$DRIVE/snapshot/outputs.tgz" -C "$WORK" || echo "Snapshot did not extract; copying file by file."
@@ -53,11 +56,39 @@ restore() {
   touch "$WORK/.restored"
 }
 
+quick_restore() {
+  echo "Quick restore for: $FAMILY (teachers, finished-run markers, checkpoints) ..."
+  mkdir -p "$OUT/$PROFILE"
+  rsync -rt "${EXCLUDE[@]}" --exclude '*.error.json' --exclude '*.ckpt' \
+    "$DRIVE/outputs/$PROFILE/teachers" "$OUT/$PROFILE/"
+  # shellcheck disable=SC2086  # FAMILY is a space-separated list on purpose
+  python3 - "$DRIVE/outputs/$PROFILE" "$OUT/$PROFILE" $FAMILY <<'PY'
+import os, shutil, sys
+src, dst, fams = sys.argv[1], sys.argv[2], sys.argv[3:]
+done = resumed = 0
+for fam in fams:
+    for root, dirs, files in os.walk(os.path.join(src, fam)):
+        rel = os.path.relpath(root, src)
+        if "result.json" in files:  # finished: a marker so the queue skips it (push never sends it)
+            os.makedirs(os.path.join(dst, rel), exist_ok=True)
+            with open(os.path.join(dst, rel, "result.json"), "w") as f:
+                f.write('{"placeholder": "finished; the real result is on Drive"}\n')
+            done += 1
+        elif "checkpoint.pt" in files:  # unfinished: resume from its checkpoint
+            os.makedirs(os.path.join(dst, rel), exist_ok=True)
+            shutil.copy2(os.path.join(root, "checkpoint.pt"), os.path.join(dst, rel, "checkpoint.pt"))
+            resumed += 1
+print(f"{done} finished runs marked, {resumed} checkpoints copied")
+PY
+}
+
 push() {
   # Only files written since the restore, so each copy does not re-check thousands of files on the
   # Drive mount. Copy, never delete: Drive keeps everything any session wrote.
+  # A result.json under 2 KB is a quick-restore marker: never send it, so it can't replace a result.
   (cd "$OUT" && find . -type f -newer "$WORK/.restored" ! -name claim ! -name '*.claim' \
-    ! -name '*.tmp' -print0) | rsync -t --from0 --files-from=- "$OUT/" "$DRIVE/outputs/"
+    ! -name '*.tmp' ! \( -name result.json -size -2k \) -print0) |
+    rsync -t --from0 --files-from=- "$OUT/" "$DRIVE/outputs/"
   rsync -rt "$LOGS/" "$DRIVE/logs/"
 }
 
@@ -88,9 +119,10 @@ main() {
   [[ "${SKIP_TESTS:-0}" == 1 ]] || uv run --no-sync pytest -q -m "not slow and not requires_data"
 
   uv run --no-sync python -c "from torchvision.datasets import CIFAR10, CIFAR100; import sys; [c(sys.argv[1], train=t, download=True) for c in (CIFAR10, CIFAR100) for t in (True, False)]" "$DATA"
-  # CRD's pre-trained CIFAR-100 teachers (mdistiller release), for lit-p1
+  # CRD's pre-trained CIFAR-100 teachers (mdistiller release), only needed by lit-p1
   local md="$DATA/mdistiller"
-  if [[ ! -f "$md/cifar_teachers/resnet32x4_vanilla/ckpt_epoch_240.pth" ]]; then
+  if [[ -z "$FAMILY" || " $FAMILY " == *" lit-p1 "* ]] &&
+    [[ ! -f "$md/cifar_teachers/resnet32x4_vanilla/ckpt_epoch_240.pth" ]]; then
     mkdir -p "$md"
     curl -L --fail -o "$md/cifar_teachers.tar" \
       https://github.com/megvii-research/mdistiller/releases/download/checkpoints/cifar_teachers.tar
@@ -117,7 +149,7 @@ main() {
   while alive "${pids[@]}"; do
     sleep $((SYNC_MIN * 60)) & wait $! || true
     push
-    echo "$(date +%H:%M) $(find "$OUT/$PROFILE" -name result.json | wc -l) results; $(tail -qn1 "$LOGS"/worker*-"$stamp".log | cut -c1-110 | tr '\n' '|')"
+    echo "$(date +%H:%M) $(find "$OUT/$PROFILE" -name result.json -newer "$WORK/.restored" | wc -l) new results this session; $(tail -qn1 "$LOGS"/worker*-"$stamp".log | cut -c1-110 | tr '\n' '|')"
   done
   echo "Queue finished. Results: $DRIVE/outputs"
 }
