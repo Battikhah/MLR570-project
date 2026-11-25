@@ -10,11 +10,11 @@ The experiments compare PCD with the usual fixed-weight sums and with the multi-
 
 The survey paper that chose these baselines lives in a separate repository, `Battikhah/MLR570-survey`.
 
-## Where the project stands (22 November 2026)
+## Where the project stands (25 November 2026): experiments finished
 
 **Start with [`docs/project-story.md`](docs/project-story.md).** It defines every term, walks through decisions 0001–0006 with the evidence that triggered each one, and summarises the results.
 
-- **Runs so far:** 786 screening runs (655 from the first weekend, 14–16 Nov, plus 131 from the extended window that is still running). Latest tables and figures: [`research/results/screen-2026-11-22/`](research/results/screen-2026-11-22/README.md).
+- **Runs:** 839 screening runs (655 from the first weekend, 14–16 Nov, plus 184 from the extended window, 18–22 Nov). The workstation stopped at 13:48 on 22 Nov and access ended on 23 Nov. Final tables and figures: [`research/results/screen-2026-11-22/`](research/results/screen-2026-11-22/README.md).
 - **Main result (VERIFIED, 5 seeds):** PCD's adaptive KD weight gives the same accuracy as a fixed weight of the same size, at every level of teacher corruption.
   - The fixed-weight control (NWKD) is PCD with the adaptive weight switched off, planned as the main control from the start (decision 0001).
   - The diagnostics show why: PCD's weight barely moves within a run, because the agreement between the CE and KD gradients is set by the teacher's error rate, which is fixed.
@@ -25,7 +25,11 @@ The survey paper that chose these baselines lives in a separate repository, `Bat
 - **With a good teacher (VERIFIED):** DOT and PCGrad beat PCD and every fixed weight by about 1.2–2 pp. Choosing the KD weight better cannot close that gap.
 - **The pipeline reproduces the literature:** on CRD's ResNet32x4 → ResNet8x4 with the mdistiller protocol, our KD gives 73.05 against the published 73.33, and our DOT 74.87 against 75.12.
 - **DTO-KD is not reported:** it scores below CE everywhere, which points to a problem in our implementation. It is under audit.
-- **Running now ([decision 0006](docs/decisions/0006-why-pcd-ties-a-fixed-weight.md)):** a teacher that turns bad halfway through training, the one setting where an adaptive weight can differ from a fixed one, and more seeds for the per-sample reliability gate.
+- **The last test ([decision 0006](docs/decisions/0006-why-pcd-ties-a-fixed-weight.md)):** a teacher that turns bad halfway through training, the one setting where an adaptive weight can differ from a fixed one.
+  - PCD's KD weight rose as the teacher got worse (0.35 → 0.81), the wrong way.
+  - It tied or lost against the matched fixed weight: −0.77 [−1.49, −0.06] pp at ρ0.7 (3 seeds).
+  - A per-sample reliability gate helps a fixed weight by 1.3–1.9 pp. PCD adds nothing on top of it.
+- **Conclusion:** PCD's adaptive weight never beat a fixed weight of the same size. PCD is best described as a principled way to set and bound the KD weight, not as an adaptive combiner.
 
 ![PCD at its average weight next to fixed weights](research/results/screen-2026-11-22/figures/matched-weights.png)
 

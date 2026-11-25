@@ -19,7 +19,15 @@ HERE = pathlib.Path(__file__).parent
 # two-sided 95% and one-sided 95% (for the 90% TOST interval) t quantiles by degrees of freedom
 T975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262}
 T95 = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015, 6: 1.943, 7: 1.895, 8: 1.860, 9: 1.833}
-DIAG_ARMS = ("pcd_t0.5", "pcd_t1.0", "pcdl_t1.0", "pcdlm_t1.0", "pcdrev_t0.5", "pcdrev_t1.0")
+DIAG_ARMS = (
+    "pcd_t0.5",
+    "pcd_t1.0",
+    "g_pcd_t0.5",
+    "pcdl_t1.0",
+    "pcdlm_t1.0",
+    "pcdrev_t0.5",
+    "pcdrev_t1.0",
+)
 
 
 def load_runs():
@@ -29,9 +37,9 @@ def load_runs():
     return acc
 
 
-def paired(acc, fam, cond, a, b, cond_b=None):
+def paired(acc, fam, cond, a, b, cond_b=None, fam_b=None):
     """Mean of seed-paired differences a - b with a 95% t-interval and a 90% (TOST) interval."""
-    A, B = acc.get((fam, cond, a), {}), acc.get((fam, cond_b or cond, b), {})
+    A, B = acc.get((fam, cond, a), {}), acc.get((fam_b or fam, cond_b or cond, b), {})
     d = [A[s] - B[s] for s in sorted(set(A) & set(B))]
     if len(d) < 2:
         return None
@@ -61,11 +69,14 @@ def mean_table(acc, fam, conds, arms):
 
 
 def diff_table(acc, title, rows):
+    """rows: (fam, cond, a, b) or (fam, cond, a, b, fam_b, cond_b) when b comes from elsewhere."""
     print(f"\n### {title}\n")
     print("| Comparison | Condition | Difference (pp) [95% interval] |")
     print("|---|---|---|")
-    for fam, cond, a, b in rows:
-        print(f"| {a} − {b} | {fam} {cond} | {fmt_diff(paired(acc, fam, cond, a, b))} |")
+    for fam, cond, a, b, *other in rows:
+        fb, cb = other or (None, None)
+        label = f"{a} − {b}" + (f" ({fb} {cb})" if fb else "")
+        print(f"| {label} | {fam} {cond} | {fmt_diff(paired(acc, fam, cond, a, b, cb, fb))} |")
 
 
 def tost_row(acc, label, fam, cond, a, b, delta=0.5, one_sided=False):
@@ -278,13 +289,44 @@ def main():
             nw,
             one_sided=True,
         )
+    diff_table(
+        acc,
+        "Per-sample gate under heavy corruption (decision 0006)",
+        [
+            ("teacher-corruption", c, a, b)
+            for c in ("rho0.3", "rho0.5", "rho0.7")
+            for a, b in (
+                ("g_pcd_t0.5", "g_nwkd_l1.0"),
+                ("g_pcd_t0.5", "pcd_t0.5"),
+                ("g_nwkd_l1.0", "nwkd_l1.0"),
+                ("g_pcd_t0.5", "nwkd_l0.25"),
+                ("g_pcd_t0.5", "ce"),
+            )
+        ],
+    )
     sw = sorted({c for (f, c, _) in acc if f == "teacher-switch"})
+    sw_arms = ["nwkd_l0.25", "nwkd_l0.75", "pcd_t0.5", "pcd_t1.0", "pcdrev_t0.5", "pcdrev_t1.0"]
     if sw:
-        mean_table(
+        mean_table(acc, "teacher-switch", sw, sw_arms)
+        diff_table(
             acc,
-            "teacher-switch",
-            sw,
-            ["nwkd_l0.25", "nwkd_l0.75", "pcd_t0.5", "pcd_t1.0", "pcdrev_t0.5", "pcdrev_t1.0"],
+            "Teacher switch: PCD against the matched fixed weight, and against CE "
+            "(CE ignores the teacher, so its teacher-corruption runs are the reference)",
+            [
+                ("teacher-switch", c, a, b)
+                for c in sw
+                for a, b in (
+                    ("pcd_t0.5", "nwkd_l0.25"),
+                    ("pcd_t1.0", "nwkd_l0.75"),
+                    ("pcdrev_t0.5", "nwkd_l0.75"),
+                    ("pcdrev_t1.0", "nwkd_l0.75"),
+                )
+            ]
+            + [
+                ("teacher-switch", c, a, "ce", "teacher-corruption", c.split("_")[0])
+                for c in sw
+                for a in sw_arms
+            ],
         )
     diagnostics_table()
 
