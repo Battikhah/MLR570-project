@@ -2,10 +2,10 @@
 
 This is the one document to read first. It explains every term, every decision record (0001–0006), the evidence that triggered each one, and what the results now say. Every number links back to a committed file that recomputes it.
 
-- **Results:** [`research/results/screen-2026-11-22/`](../research/results/screen-2026-11-22/README.md) (latest), [`research/results/screen-2026-11-16/`](../research/results/screen-2026-11-16/README.md) (first weekend)
+- **Results:** [`research/results/screen-2026-11-22/`](../research/results/screen-2026-11-22/README.md) (final set, 839 runs), [`research/results/screen-2026-11-16/`](../research/results/screen-2026-11-16/README.md) (first weekend)
 - **Design of every experiment:** [`docs/experiment-suite.md`](experiment-suite.md)
 - **Decision records:** [`docs/decisions/`](decisions/README.md)
-- **Status: 22 November 2026.** The extended GPU window runs until Monday 23 November 07:40. Claims are labelled VERIFIED (read from the runs), INTERPRETATION (our reading) or HYPOTHESIS (untested), as `AGENTS.md` requires.
+- **Status: 25 November 2026. The experiments are finished.** The workstation's last result reached Drive at 13:48 on 22 November, and access ended on 23 November. A Colab launcher (`scripts/colab/`, branch `Battikhah/colab`) can continue the queue, but no run needs it for the conclusion. Claims are labelled VERIFIED (read from the runs), INTERPRETATION (our reading) or HYPOTHESIS (untested), as `AGENTS.md` requires.
 
 ## 1. The question in one paragraph
 
@@ -148,6 +148,14 @@ That left two holes:
 - The switch runs fixed weights 0.25/0.75, CE-first PCD (whose weight should move the wrong way when the teacher turns bad) and KD-first PCD (whose CE weight should move the right way).
 - Both blocks run first in the remaining window (about 7 GPU hours).
 
+### 22 November, afternoon. The answer to decision 0006, and the end of the runs
+
+**The gate (5 seeds):** judging the teacher per sample works. It adds 1.3–1.9 pp to a fixed weight of 1.0 at ρ0.5/0.7. Gated PCD ties an ungated fixed weight of its size (its KD weight averages 0.12–0.19), so the gate's gain does not need PCD.
+
+**The teacher switch (3 seeds):** CE-first PCD raised its KD weight when the teacher turned bad (0.35 → 0.81 for τ1.0 at ρ0.7), as 0006 predicted, and lost to the matched fixed weight: −0.77 [−1.49, −0.06] pp. KD-first PCD moved its CE weight the right way but only tied the fixed weight (τ1.0) or fell far below CE (τ0.5).
+
+**Outcome:** 0006's rule for this case was: "if it ties here too, the paper reports PCD as a principled way to bound the KD weight, not as an adaptive combiner." It tied or lost. The workstation stopped uploading at 13:48 the same day, with 37 of the 60 switch runs done, and the access window closed before it came back.
+
 ## 4. What the results say now
 
 The full tables, with every interval, are in [`screen-2026-11-22/README.md`](../research/results/screen-2026-11-22/README.md).
@@ -186,7 +194,19 @@ The full tables, with every interval, are in [`screen-2026-11-22/README.md`](../
 - **With a corrupted teacher, putting the teacher first is a disaster:** −11.1 pp against CE at ρ0.7.
 - **So PCD protects whichever signal you put first.** That is useful when you know which signal is unreliable, but a fixed weight chosen with the same knowledge does as well.
 
-**6. The pipeline is trustworthy (VERIFIED).**
+**6. The per-sample gate helps, but not through PCD (VERIFIED, 5 seeds).**
+- **The gate adds 1.29 [+0.82, +1.76] pp to NWKD 1.0 at ρ0.5 and 1.89 [+1.41, +2.36] at ρ0.7.**
+- **Gated PCD τ0.5 against an ungated fixed 0.25:** +0.14 and +0.24, both intervals spanning 0. Gated PCD beats gated NWKD 1.0 at ρ0.7 (+1.02 [+0.28, +1.76]) only because its weight is far smaller.
+
+![PCD's weight and accuracy when the teacher turns bad mid-run](../research/results/screen-2026-11-22/figures/teacher-switch.png)
+
+**7. When the teacher turns bad during training, PCD's weight moves the wrong way and PCD does no better (VERIFIED, 3 seeds).**
+- **This is the setting built to favour an adaptive weight,** because the cosine changes within the run: from 0.65 to 0.18 at ρ0.7.
+- **CE-first PCD τ1.0's KD weight rises from 0.35 to 0.81** as the teacher gets worse. At ρ0.7 it loses to fixed 0.75 (−0.77 [−1.49, −0.06]), although its average weight is lower (0.58).
+- **KD-first PCD raises its CE weight, the right way,** but τ1.0 only ties the fixed weight (−0.22 [−0.81, +0.37]) and τ0.5 ends 5.31 pp below CE at ρ0.7.
+- **No arm beats CE meaningfully.** The best is fixed 0.25: +0.27 and +0.03.
+
+**8. The pipeline is trustworthy (VERIFIED).**
 - **lit-p1 reproduces the published mdistiller numbers:** KD 73.05 against 73.33 published, DOT 74.87 against 75.12.
 - **Every arm shares seeds, data order and corruption maps,** so all comparisons are paired.
 
@@ -197,7 +217,7 @@ The full tables, with every interval, are in [`screen-2026-11-22/README.md`](../
   - On standard KD benchmarks PCD reduces to a fixed weight, because the CE–KD agreement does not change within a run.
   - Its weight rises with teacher–label disagreement, which is wrong for a corrupted teacher and right for noisy labels.
   - Robustness to a bad teacher comes from keeping the KD weight small, not from detecting conflict.
-- **The teacher-switch and gated runs will say whether either limit can be lifted:** a changing teacher, or a per-sample check.
+- **Neither limit could be lifted.** A per-sample check helps, but PCD adds nothing on top of it. A teacher that changes during training makes PCD's weight move, and in the wrong direction. See 6 and 7 above.
 
 ## 5. Predictions made before the runs, checked
 
@@ -208,7 +228,7 @@ The full tables, with every interval, are in [`screen-2026-11-22/README.md`](../
 | H2: under 30% corruption PCD is not more accurate than tuned NWKD | Holds: +0.13, 90% interval [−0.17, +0.44] |
 | H3: clean teacher, PCD within ±0.5 pp of tuned NWKD | Not shown: −0.29, 90% interval [−0.80, +0.22] with 5 seeds (the plan assumed 10) |
 | H4: gated PCD within ±0.5 pp of gated NWKD at 30% corruption | Not shown: −0.50, 90% interval [−1.51, +0.51] with 3 seeds |
-| Non-claim in the proposal: PCD's batch-level weight cannot pick out corrupted samples | Consistent with every diagnostic; tested directly by decision 0006's gated runs |
+| Non-claim in the proposal: PCD's batch-level weight cannot pick out corrupted samples | Holds. The per-sample gate is worth 1.3–1.9 pp to a fixed weight; PCD's batch weight adds nothing on top of it (decision 0006) |
 
 ## 6. Where we departed from the plan, and why
 
@@ -224,8 +244,9 @@ These deviations have to be reported in the paper:
 
 ## 7. Still open
 
-- **The teacher-switch and gated-seed runs (decision 0006)** run first in the window ending Monday 07:40.
-- **Second seeds** for the single-seed leads: temperature robustness (PCD's spread over T was 0.4 pp, against WKD's 5.7), the PCD ablations, and loss scaling.
+- **Teacher-switch seeds 3–4** (23 runs) were not run. Only one of the switch comparisons excludes zero with 3 seeds. `scripts/colab/` can run them.
+- **A gated fixed weight near 0.2,** the exactly matched control for gated PCD, was never queued.
+- **Second seeds** for the single-seed leads, which access ended before reaching: temperature robustness (PCD's spread over T was 0.4 pp, against WKD's 5.7), the PCD ablations, and loss scaling.
 - **The DTO-KD audit,** against the paper's equations and step size.
 - **A cross-agent review** of decisions 0005 and 0006, which `AGENTS.md` requires for substantive changes.
 

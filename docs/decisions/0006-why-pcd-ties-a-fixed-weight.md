@@ -11,7 +11,7 @@
 
 ## Context
 
-These are the results of the extended window up to Sunday 22 Nov, 09:23 (784 runs). The same numbers, from the 10:08 copy (786 runs), are committed in `research/results/screen-2026-11-22/`.
+These are the results of the extended window up to Sunday 22 Nov, 09:23 (784 runs). The same numbers, from the 10:08 copy (786 runs), were committed in `research/results/screen-2026-11-22/` (commit e4ae563); that folder now holds the final set of 839 runs, in which these numbers are unchanged.
 
 **VERIFIED, 5 seeds, teacher corruption:**
 - PCD ties NWKD at the fixed weight matching its average λ_eff at every ρ:
@@ -50,3 +50,16 @@ At the measured pace of about 11 runs/h, the two blocks take about 7 h of the ro
 - **If it ties here too:** PCD's batch-level rule is too slow or too coarse even in its best case. The paper then reports PCD as a principled way to bound the KD weight, not as an adaptive combiner.
 - **Decision 0005's later blocks lose about 7 h:** the tail of tier 3 (core-p1 seeds, the noisy-teacher label noise, sensitivity on sym0.4, label-noise seed 2) is less likely to run this window.
 - **Not yet done:** a cross-agent review of this change, required by AGENTS.md for substantive changes.
+
+## Outcome (added 25 November)
+
+Results: `research/results/screen-2026-11-22/README.md` (the gate section and Figure 4).
+
+- **Gated seeds, all 16 run (5 seeds at ρ0.5/0.7):**
+  - The gate adds +1.29 / +1.89 pp to NWKD 1.0.
+  - Gated PCD τ0.5 ties an ungated NWKD 0.25 (+0.14 / +0.24, both intervals span 0). Its KD weight averages 0.12 / 0.19.
+- **Teacher-switch, 37 of 60 run (3 seeds):**
+  - Both predicted directions held: CE-first PCD raised its KD weight (τ1.0 at ρ0.7: 0.35 → 0.81), and KD-first PCD raised its CE weight.
+  - Neither beat its matched fixed weight. CE-first PCD τ1.0 lost at ρ0.7: −0.77 [−1.49, −0.06].
+- **Which consequence applies:** the second one ("if it ties here too"). PCD is reported as a principled way to bound the KD weight, not as an adaptive combiner.
+- **Why it stopped short:** the workstation stopped uploading at 13:48 on 22 Nov (cause unknown), and access ended on 23 Nov. Teacher-switch seeds 3–4 were not run, and neither was the rest of decision 0005's queue.

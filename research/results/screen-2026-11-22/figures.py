@@ -216,10 +216,79 @@ def robustness(acc):
     fig.savefig(OUT / "robustness.png", dpi=160)
 
 
+def paired_diff(acc, fam, cond, a, b):
+    A, B = acc[(fam, cond, a)], acc[(fam, cond, b)]
+    d = [A[k] - B[k] for k in sorted(set(A) & set(B))]
+    t975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776}[len(d) - 1]
+    return st.mean(d), t975 * st.stdev(d) / math.sqrt(len(d))
+
+
+def teacher_switch(acc, d):
+    """Teacher clean for the first half, corrupted after: PCD's weight moves, and the wrong way."""
+    fam = "teacher-switch"
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 3.9), gridspec_kw={"width_ratios": [1.1, 1]})
+    x = [0, 1, 2]
+    a1.axvspan(1, 2.6, color=GRID, alpha=0.6, lw=0)
+    a1.text(1.05, 0.98, "teacher corrupted from epoch 30", fontsize=8, color=INK2, va="top")
+    for arm, label, color, ls, mk in (
+        ("pcd_t1.0", "PCD τ1.0, CE first: KD weight", ORANGE, "-", "s"),
+        ("pcd_t0.5", "PCD τ0.5, CE first: KD weight", ORANGE, ":", "D"),
+        ("pcdrev_t1.0", "PCD τ1.0, KD first: CE weight", AQUA, "-", "o"),
+        ("pcdrev_t0.5", "PCD τ0.5, KD first: CE weight", AQUA, ":", "^"),
+    ):
+        y = [d(fam, "rho0.7_from0.5", arm, f"lambda_third{i}") for i in (1, 2, 3)]
+        a1.plot(x, y, color=color, ls=ls, lw=2, marker=mk, ms=7, mec=SURFACE, label=label)
+    for lam in (0.25, 0.75):
+        a1.axhline(lam, color=BLUE, lw=1.2, ls="--")
+        a1.text(2.55, lam + 0.015, f"fixed {lam}", color=INK2, fontsize=8, va="bottom", ha="right")
+    a1.set_xticks(x, ["first third", "middle third", "last third"])
+    a1.set_xlim(-0.15, 2.6)
+    a1.set_ylim(0, 1.32)
+    a1.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    a1.set_ylabel("weight on the second loss (mean per third)")
+    a1.set_title("Weight over training, ρ0.7 after the switch", fontsize=10, loc="left")
+    a1.legend(loc="upper left", fontsize=7.5, ncol=2)
+    pairs = [
+        ("pcd_t0.5", "nwkd_l0.25", "PCD τ0.5 (CE first)\n− fixed 0.25"),
+        ("pcd_t1.0", "nwkd_l0.75", "PCD τ1.0 (CE first)\n− fixed 0.75"),
+        ("pcdrev_t1.0", "nwkd_l0.75", "PCD τ1.0 (KD first)\n− fixed 0.75"),
+    ]
+    for j, (cond, mk, off, lab) in enumerate(
+        (("rho0.5_from0.5", "o", -0.12, "ρ0.5"), ("rho0.7_from0.5", "s", 0.12, "ρ0.7"))
+    ):
+        m = [paired_diff(acc, fam, cond, a, b) for a, b, _ in pairs]
+        a2.errorbar(
+            [i + off for i in range(len(pairs))],
+            [v for v, _ in m],
+            yerr=[e for _, e in m],
+            color=INK2 if j == 0 else INK,
+            marker=mk,
+            ms=7,
+            lw=0,
+            elinewidth=1.5,
+            capsize=3,
+            label=f"{lab} after the switch",
+        )
+    a2.axhline(0, color=GRAY, lw=1.2)
+    a2.set_xticks(range(len(pairs)), [p[2] for p in pairs], fontsize=8)
+    a2.set_ylabel("difference in test top-1 (pp)")
+    a2.set_title("Against the matched fixed weight (3 seeds, 95% CI)", fontsize=10, loc="left")
+    a2.legend(loc="lower right", fontsize=8)
+    fig.suptitle(
+        "When the teacher turns bad, CE-first PCD gives it more weight, and does no better",
+        x=0.01,
+        ha="left",
+        fontsize=11,
+    )
+    fig.tight_layout()
+    fig.savefig(OUT / "teacher-switch.png", dpi=160)
+
+
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
     acc, d = runs(), diag()
     matched_weights(acc, d)
     weight_over_training(d)
     robustness(acc)
+    teacher_switch(acc, d)
     print("figures ->", OUT)
