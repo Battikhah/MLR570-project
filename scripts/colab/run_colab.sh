@@ -112,9 +112,14 @@ main() {
   echo "Code: $(git rev-parse --short HEAD) $(git log -1 --format=%s)"
   command -v uv >/dev/null || { curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH="$HOME/.local/bin:$PATH"; }
   uv sync --frozen
-  uv pip install --reinstall "torch==2.14.1" "torchvision==0.29.1" --index-url https://download.pytorch.org/whl/cu126
+  # --python: into the project's .venv. Colab's own uv settings otherwise send it to the system Python,
+  # and the runs would use the locked torch 2.15.0+cu132 instead of the workstation's build.
+  uv pip install --python .venv/bin/python --reinstall "torch==2.14.1" "torchvision==0.29.1" \
+    --index-url https://download.pytorch.org/whl/cu126
   uv run --no-sync python -c "import sys, torch; ok = torch.cuda.is_available(); print('torch', torch.__version__, 'CUDA:', ok, torch.cuda.get_device_name(0) if ok else ''); sys.exit(0 if ok else 1)" \
     || { echo "No GPU: Runtime > Change runtime type > GPU, then run again."; exit 1; }
+  uv run --no-sync python -c "import sys, torch; sys.exit(0 if torch.__version__.startswith('2.14.1') else 1)" \
+    || { echo "torch is not the workstation's 2.14.1+cu126 build; stopping so results stay comparable."; exit 1; }
 
   [[ "${SKIP_TESTS:-0}" == 1 ]] || uv run --no-sync pytest -q -m "not slow and not requires_data"
 
