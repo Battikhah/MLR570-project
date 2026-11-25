@@ -32,3 +32,14 @@ The lab workstation's access window has closed. The team has Colab compute units
 
 - The momentum-off runs will be less accurate overall. The `_mom0` ablation lost 3–4 pp at the same learning rate, so only within-regime comparisons are meaningful.
 - **Not yet done:** a cross-agent review of this change.
+
+## Extension (25 November): the controls the review found missing
+
+The team runs on a Colab T4 (High-RAM) with compute units to spare, so three controls follow the momentum-off blocks:
+
+- **Fixed weight 0.5 in `teacher-switch`** (5 seeds, both ρ). PCD τ1.0 averages 0.58 there. Until now only 0.25 and 0.75 were run, so "matched" was ambiguous.
+- **Gated fixed weight 0.25 (`g_nwkd_l0.25`)** at ρ0.5 and ρ0.7, 5 seeds. Gated PCD τ0.5 uses an average weight of 0.12–0.19. Without this control, "PCD adds nothing on top of the gate" could not be tested.
+- **Twice the learning rate (`_lr0.1`) for PCD τ1.0 and NWKD 1.0** on the clean teacher, 3 seeds. PCD and NWKD rescale every step to ‖g_CE‖, while WKD, PCGrad and DOT do not. The review showed PCGrad never projected, so its gain over WKD 0.5 comes from the step size. This tests whether a bigger step closes the gap to DOT and PCGrad.
+- **Momentum-off seeds 3–4** on the clean teacher and at constant ρ0.7.
+
+Together with the momentum-off blocks and the rest of `teacher-switch`, that is 109 new runs, all in `teacher-switch` and `teacher-corruption`.

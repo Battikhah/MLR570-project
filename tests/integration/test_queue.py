@@ -80,13 +80,21 @@ def test_extended_plan_runs_first_and_matched_weights_lead():
     gated, rest = rest[:16], rest[16:]
     assert {s["arm"] for s in gated} == {"g_pcd_t0.5", "g_nwkd_l1.0"}
     assert {s["condition"] for s in gated} == {"rho0.5", "rho0.7"}
-    n_switch = 2 * 9 * 5 - 9
+    n_switch = 2 * 10 * 5 - 9  # 6 arms, 3 momentum-off, fixed 0.5 (0007 extension)
     assert {s["family"] for s in rest[:n_switch]} == {"teacher-switch"}
     rest = rest[n_switch:]
     assert {(s["condition"], s["arm"]) for s in rest[:9]} == {
         ("rho0.7", a) for a in suite.MOM0_NAMES
     }
     rest = rest[9:]
+    # 0007 extension: gated fixed 0.25, the doubled learning rate, momentum-off seeds 3-4
+    assert {(s["arm"], s["seed"]) for s in rest[:10]} == {("g_nwkd_l0.25", k) for k in range(5)}
+    assert {s["arm"] for s in rest[10:16]} == set(suite.LR2_NAMES)
+    assert {s["lr"] for s in rest[10:16]} == {0.1}
+    assert {(s["arm"], s["seed"]) for s in rest[16:28]} == {
+        (a, k) for a in suite.MOM0_NAMES for k in (3, 4)
+    }
+    rest = rest[28:]
     first = rest[: 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
     assert {s["arm"] for s in first} == {"nwkd_l0.25", "nwkd_l0.75"}
     assert {s["family"] for s in first} == {"teacher-corruption"}

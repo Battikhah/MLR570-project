@@ -255,6 +255,12 @@ MOM0_ARMS = [
     {**a, "arm": a["arm"] + "_mom0", "momentum": 0.0} for a in (pcd(1.0), nwkd(0.5), nwkd(0.75))
 ]
 MOM0_NAMES = tuple(a["arm"] for a in MOM0_ARMS)
+# Decision 0007, extended: controls the review found missing. Fixed 0.5 in the switch (PCD tau1.0
+# averages 0.58 there); a gated fixed weight near gated PCD's 0.12-0.19; and twice the learning rate
+# for PCD and NWKD, whose steps are rescaled to ||g_CE|| while WKD, PCGrad and DOT are not.
+GATED_LOW_ARMS = [gated(nwkd(0.25))]
+LR2_ARMS = [{**a, "arm": a["arm"] + "_lr0.1", "lr": 0.1} for a in (pcd(1.0), nwkd(1.0))]
+LR2_NAMES = tuple(a["arm"] for a in LR2_ARMS)
 
 FAMILIES = [
     _family(
@@ -352,6 +358,8 @@ FAMILIES = [
             *TC_LAYERWISE_ARMS,  # appended last: existing spec ids and content are unchanged
             *MATCHED_NWKD_ARMS,  # decision 0005, appended after those
             *MOM0_ARMS,  # decision 0007, appended last
+            *GATED_LOW_ARMS,
+            *LR2_ARMS,
         ],
         P0,
     ),
@@ -499,7 +507,7 @@ FAMILIES = [
             ({"teacher_corruption": r, "corrupt_from": 0.5}, f"rho{r}_from0.5")
             for r in (0.5, 0.7)
         ],
-        [*SWITCH_ARMS, *MOM0_ARMS],  # decision 0007 appended last
+        [*SWITCH_ARMS, *MOM0_ARMS, nwkd(0.5)],  # decision 0007 appended last
         P0,
     ),
 ]
@@ -633,6 +641,9 @@ EXTENDED_PLAN = (
     # 0b. a teacher whose quality changes within the run
     ("teacher-switch", (0, 1, 2, 3, 4), None, None),
     ("teacher-corruption", (0, 1, 2), ("rho0.7",), MOM0_NAMES),  # 0007: constant bad teacher
+    ("teacher-corruption", (0, 1, 2, 3, 4), ("rho0.5", "rho0.7"), ("g_nwkd_l0.25",)),  # 0007 ext.
+    ("teacher-corruption", (0, 1, 2), ("rho0.0",), LR2_NAMES),  # 0007 ext.: step size
+    ("teacher-corruption", (3, 4), ("rho0.0", "rho0.7"), MOM0_NAMES),  # 0007 ext.: seeds 3-4
     # A. the paper's two headline results
     # 1. is PCD's adaptive weight better than a fixed weight at the same level?
     ("teacher-corruption", (0, 1, 2, 3, 4), None, tuple(a["arm"] for a in MATCHED_NWKD_ARMS)),

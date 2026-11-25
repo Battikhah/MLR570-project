@@ -38,7 +38,8 @@ def test_teacher_switch_family_reuses_the_teacher_corruption_teacher():
     screen, _ = build_specs("screen", families=["teacher-switch", "teacher-corruption"])
     sw = [s for s in screen if s["family"] == "teacher-switch"]
     tc = next(s for s in screen if s["family"] == "teacher-corruption")
-    assert len(sw) == 2 * 9 * 5 and {s["corrupt_from"] for s in sw} == {0.5}
+    assert len(sw) == 2 * 10 * 5 and {s["corrupt_from"] for s in sw} == {0.5}
+    assert "nwkd_l0.5" in {s["arm"] for s in sw}
     mom = {s["arm"]: s["momentum"] for s in sw}
     assert {a for a, m in mom.items() if m == 0.0} == set(MOM0_NAMES)
     assert {m for a, m in mom.items() if a not in MOM0_NAMES} == {0.9}
