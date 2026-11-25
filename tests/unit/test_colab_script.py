@@ -20,7 +20,9 @@ def _write(path, text="x"):
 
 
 def _bash(tmp_path, body):
-    env = f"export DRIVE={tmp_path}/drive WORK={tmp_path}/work; source {SCRIPT}; set +e; "
+    # unset: the Colab notebook exports FAMILY etc., which would switch on the quick restore
+    env = f"unset FAMILY PROFILE; export DRIVE={tmp_path}/drive WORK={tmp_path}/work; "
+    env += f"source {SCRIPT}; set +e; "
     subprocess.run(["bash", "-c", env + 'mkdir -p "$LOGS"; ' + body], check=True)
 
 
