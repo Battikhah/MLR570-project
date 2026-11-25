@@ -249,6 +249,12 @@ CLEAN_PCDLM_ARMS = [pcdlm(0.5), pcdlm(1.0)]
 # Decision 0006: the teacher turns bad halfway through training, so the CE-KD agreement changes
 # within a run; the one setting where an adaptive weight can differ from a fixed one (Cor. 4.6).
 SWITCH_ARMS = [nwkd(0.25), nwkd(0.75), pcd(0.5), pcd(1.0), pcd(0.5, "kd"), pcd(1.0, "kd")]
+# Decision 0007 (review of 25 Nov): the PCD paper warns that SGD momentum breaks its guarantee, and
+# momentum 0.9 averages the per-step weight over ~10 steps. The same matched comparison without it.
+MOM0_ARMS = [
+    {**a, "arm": a["arm"] + "_mom0", "momentum": 0.0} for a in (pcd(1.0), nwkd(0.5), nwkd(0.75))
+]
+MOM0_NAMES = tuple(a["arm"] for a in MOM0_ARMS)
 
 FAMILIES = [
     _family(
@@ -345,6 +351,7 @@ FAMILIES = [
             gated(pcd(0.5, "kd")),
             *TC_LAYERWISE_ARMS,  # appended last: existing spec ids and content are unchanged
             *MATCHED_NWKD_ARMS,  # decision 0005, appended after those
+            *MOM0_ARMS,  # decision 0007, appended last
         ],
         P0,
     ),
@@ -492,7 +499,7 @@ FAMILIES = [
             ({"teacher_corruption": r, "corrupt_from": 0.5}, f"rho{r}_from0.5")
             for r in (0.5, 0.7)
         ],
-        SWITCH_ARMS,
+        [*SWITCH_ARMS, *MOM0_ARMS],  # decision 0007 appended last
         P0,
     ),
 ]
@@ -617,11 +624,15 @@ NEW_TC_ARMS = tuple(a["arm"] for a in TC_LAYERWISE_ARMS)
 # Decision 0005 (extended access, 18-23 Nov 2026), reranked on 21 Nov for the ~35 GPU hours left:
 # most important first. Everything in EARLIER_PLAN keeps its order after these blocks.
 EXTENDED_PLAN = (
+    # Decision 0007 (25 Nov, Colab): PCD vs matched fixed weights with optimizer momentum off
+    ("teacher-switch", (0, 1, 2), ("rho0.7_from0.5",), MOM0_NAMES),
+    ("teacher-corruption", (0, 1, 2), ("rho0.0",), MOM0_NAMES),
     # Decision 0006 (22 Nov): the two tests of why PCD ties a fixed weight, ahead of the rest
     # 0a. per-sample gate under heavy corruption (1 seed so far at rho 0.5 / 0.7)
     ("teacher-corruption", (1, 2, 3, 4), ("rho0.5", "rho0.7"), ("g_pcd_t0.5", "g_nwkd_l1.0")),
     # 0b. a teacher whose quality changes within the run
     ("teacher-switch", (0, 1, 2, 3, 4), None, None),
+    ("teacher-corruption", (0, 1, 2), ("rho0.7",), MOM0_NAMES),  # 0007: constant bad teacher
     # A. the paper's two headline results
     # 1. is PCD's adaptive weight better than a fixed weight at the same level?
     ("teacher-corruption", (0, 1, 2, 3, 4), None, tuple(a["arm"] for a in MATCHED_NWKD_ARMS)),

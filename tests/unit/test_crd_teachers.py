@@ -71,7 +71,7 @@ def test_lit_p1_specs():
 
     assert suite.EARLIER_PLAN[0][0] == "lit-p1"
     screen, _ = build_specs("screen")
-    assert queue_order(screen)[0]["family"] == "teacher-corruption"
+    assert queue_order(screen)[0]["family"] == suite.EXTENDED_PLAN[0][0] != "lit-p1"
     smoke, smoke_t = build_specs("smoke", families=["lit-p1"])
     assert {s["epochs"] for s in smoke} == {1} and "pretrained" not in smoke_t[KEY]
 

@@ -68,12 +68,26 @@ def test_extended_plan_runs_first_and_matched_weights_lead():
     q = queue_order(SCREEN)
     n = sum(1 for s in SCREEN if any(suite.in_block(s, b) for b in suite.EXTENDED_PLAN))
     assert suite.WEEKEND_PLAN[: len(suite.EXTENDED_PLAN)] == suite.EXTENDED_PLAN
-    # decision 0006: the gated seeds, then the teacher switch, then the matched weights
-    gated, rest = q[:16], q[16:]
+    # decision 0007: momentum-off matched check (switch at rho 0.7, then clean), 3 seeds each
+    mom0, rest = q[:18], q[18:]
+    assert {s["arm"] for s in mom0} == set(suite.MOM0_NAMES)
+    assert {s["momentum"] for s in mom0} == {0.0}
+    assert {(s["family"], s["condition"]) for s in mom0[:9]} == {
+        ("teacher-switch", "rho0.7_from0.5")
+    }
+    assert {(s["family"], s["condition"]) for s in mom0[9:]} == {("teacher-corruption", "rho0.0")}
+    # decision 0006: the gated seeds, then the rest of the teacher switch, then the matched weights
+    gated, rest = rest[:16], rest[16:]
     assert {s["arm"] for s in gated} == {"g_pcd_t0.5", "g_nwkd_l1.0"}
     assert {s["condition"] for s in gated} == {"rho0.5", "rho0.7"}
-    assert {s["family"] for s in rest[:60]} == {"teacher-switch"}
-    first = rest[60 : 60 + 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
+    n_switch = 2 * 9 * 5 - 9
+    assert {s["family"] for s in rest[:n_switch]} == {"teacher-switch"}
+    rest = rest[n_switch:]
+    assert {(s["condition"], s["arm"]) for s in rest[:9]} == {
+        ("rho0.7", a) for a in suite.MOM0_NAMES
+    }
+    rest = rest[9:]
+    first = rest[: 5 * 5 * len(suite.MATCHED_NWKD_ARMS)]
     assert {s["arm"] for s in first} == {"nwkd_l0.25", "nwkd_l0.75"}
     assert {s["family"] for s in first} == {"teacher-corruption"}
     headline = {"teacher-corruption", "label-noise", "core-p0", "lit-p1"}

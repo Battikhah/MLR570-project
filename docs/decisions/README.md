@@ -10,5 +10,6 @@ One file per decision: context, evidence, decision, consequences. The story that
 | [0004](0004-layerwise-pcd-and-priority-queue.md) | 15 Nov | Add per-layer PCD (`pcdl`) and per-layer PCD on momentum buffers (`pcdlm`) | PCD behaving like NWKD at a matched weight |
 | [0005](0005-extended-access-plan.md) | 18 Nov (reranked 21 Nov) | Use the extra access nights for matched fixed weights (NWKD 0.25/0.75), PCGrad seeds and PCDLM on clean benchmarks | Lab extended remote access; no fixed weight at the values PCD uses |
 | [0006](0006-why-pcd-ties-a-fixed-weight.md) | 22 Nov | Gated seeds at high ρ and a `teacher-switch` family, run first | Matched weights tie PCD; PCD's weight barely moves within a run |
+| [0007](0007-momentum-off-check.md) | 25 Nov | PCD τ1.0 against fixed weights 0.5 and 0.75 with optimizer momentum off, first in the queue, on Colab | Review: the PCD paper warns against SGD momentum, and no matched momentum-off run existed |
 
 Outcome of 0006 (the last decision): the gate helps, but PCD adds nothing on top of it. With a teacher that turns bad mid-run, PCD's weight moves the wrong way and PCD ties or loses against the matched fixed weight. See the outcome section of 0006.

@@ -2,7 +2,7 @@
 
 import torch
 
-from pcdkd.experiments.suite import build_specs
+from pcdkd.experiments.suite import MOM0_NAMES, build_specs
 from pcdkd.train.trainer import _corruption_active, _teacher_targets
 
 
@@ -38,6 +38,9 @@ def test_teacher_switch_family_reuses_the_teacher_corruption_teacher():
     screen, _ = build_specs("screen", families=["teacher-switch", "teacher-corruption"])
     sw = [s for s in screen if s["family"] == "teacher-switch"]
     tc = next(s for s in screen if s["family"] == "teacher-corruption")
-    assert len(sw) == 2 * 6 * 5 and {s["corrupt_from"] for s in sw} == {0.5}
+    assert len(sw) == 2 * 9 * 5 and {s["corrupt_from"] for s in sw} == {0.5}
+    mom = {s["arm"]: s["momentum"] for s in sw}
+    assert {a for a, m in mom.items() if m == 0.0} == set(MOM0_NAMES)
+    assert {m for a, m in mom.items() if a not in MOM0_NAMES} == {0.9}
     assert {s["teacher_keys"][0] for s in sw} == {tc["teacher_keys"][0]}
     assert "corrupt_from" not in tc
